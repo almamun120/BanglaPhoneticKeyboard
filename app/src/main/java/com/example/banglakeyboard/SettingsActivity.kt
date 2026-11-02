@@ -119,8 +119,8 @@ class SettingsActivity : Activity() {
                 "bangla → বাংলা     utqtor → উত্তর     budqdhi → বুদ্ধি\n" +
                 "boqi → বই     hotthaqt → হঠাৎ     caqqd → চাঁদ\n" +
                 "dhorm → ধর্ম     durga → দুর্গা     bidza → বিদ্যা\n" +
-                "jqnan → জ্ঞান     xoma → ক্ষমা     rrisssi → ঋষি\n" +
-                "ghorrqi → ঘড়ি     duqwkh → দুঃখ     swopn → স্বপ্ন\n\n" +
+                "jqnan → জ্ঞান     xoma → ক্ষমা     rrrsssi → ঋষি\n" +
+                "ghorri → ঘড়ি     duqwkh → দুঃখ     swopn → স্বপ্ন\n\n" +
                 "q = ভাঙার চিহ্ন;  ng = ং,  qn = ঞ,  qng = ঙ,  qt = ৎ,  qq = ঁ,  qk = ৳,  qw = ঃ"
         ))
 

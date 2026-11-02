@@ -35,7 +35,7 @@ object BanglaPhonetic {
         "ii" to Pair("ঈ", "ী"),
         "u" to Pair("উ", "ু"),
         "uu" to Pair("ঊ", "ূ"),
-        "rri" to Pair("ঋ", "ৃ"),
+        "rrr" to Pair("ঋ", "ৃ"),
         "e" to Pair("এ", "ে"),
         "oi" to Pair("ঐ", "ৈ"),
         "oo" to Pair("ও", "ো"),
