@@ -82,9 +82,10 @@ class EmojiPanel(
             textSize = if (label.length > 3) 13f else 16f
             setTextColor(if (label.length > 3) colors.hint else colors.accent)
             gravity = Gravity.CENTER
+            val bgColor = if (label.length > 3) colors.key else colors.funcKey
             val bg = GradientDrawable().apply {
                 cornerRadius = 7 * density
-                setColor(if (label.length > 3) colors.key else colors.funcKey)
+                setColor(bgColor)
             }
             background = android.graphics.drawable.InsetDrawable(bg, (2.5f * density).toInt(), (3.5f * density).toInt(), (2.5f * density).toInt(), (3.5f * density).toInt())
             setOnClickListener {
@@ -120,10 +121,11 @@ class EmojiPanel(
     private fun select(index: Int) {
         selected = index
         tabViews.forEachIndexed { i, tv ->
+            val bgColor = colors.pressed
             tv.background = if (i == index) {
                 GradientDrawable().apply {
                     cornerRadius = 8 * density
-                    setColor(colors.pressed)
+                    setColor(bgColor)
                 }
             } else null
         }
