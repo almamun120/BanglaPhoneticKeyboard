@@ -9,6 +9,7 @@ import android.graphics.Path
 import android.graphics.RectF
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
 import android.util.TypedValue
 import android.view.HapticFeedbackConstants
 import android.view.MotionEvent
@@ -42,13 +43,17 @@ class KeyView(
     private val path = Path()
     private var down = false
     private var longFired = false
+    private var downAt = 0L
     private var dynMode = false
     private var dynHint: String? = null
+    private var dynGreen = false
     private val uiHandler = Handler(Looper.getMainLooper())
 
     private val bgPaint = Paint(Paint.ANTI_ALIAS_FLAG)
     private val textPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { textAlign = Paint.Align.CENTER }
     private val hintPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { textAlign = Paint.Align.RIGHT }
+    private val holdPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { textAlign = Paint.Align.LEFT }
+    private val barPaint = Paint(Paint.ANTI_ALIAS_FLAG)
     private val iconPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.STROKE
         strokeCap = Paint.Cap.ROUND
@@ -56,10 +61,11 @@ class KeyView(
     }
 
     /** বাংলা মোডে শব্দ চলাকালীন: এই কী চাপলে যা আসবে তার ইঙ্গিত (null হলে কিছু দেখায় না) */
-    fun setDynamic(on: Boolean, hint: String?) {
-        if (dynMode == on && dynHint == hint) return
+    fun setDynamic(on: Boolean, hint: String?, green: Boolean = false) {
+        if (dynMode == on && dynHint == hint && dynGreen == green) return
         dynMode = on
         dynHint = hint
+        dynGreen = green
         invalidate()
     }
 
@@ -134,7 +140,7 @@ class KeyView(
                     else -> 10f
                 }
                 hintPaint.typeface = Typeface.DEFAULT_BOLD
-                hintPaint.color = colors.accent
+                hintPaint.color = if (dynGreen) colors.green else colors.accent
                 hintPaint.textSize = sp(s)
                 val maxW = bgRect.width() - 5 * density
                 while (hintPaint.measureText(it) > maxW && s > 7f) {
@@ -150,6 +156,24 @@ class KeyView(
                 hintPaint.color = colors.hint
                 canvas.drawText(it, bgRect.right - 4 * density, bgRect.top + sp(11.5f), hintPaint)
             }
+        }
+
+        // ২ সেকেন্ড চেপে ধরার কমান্ডের ছোট নাম (নিচের বাম কোণে)
+        key.holdLabel?.let {
+            holdPaint.textSize = sp(8.5f)
+            holdPaint.color = colors.hint
+            canvas.drawText(it, bgRect.left + 4 * density, bgRect.bottom - 4 * density, holdPaint)
+        }
+        // ধরে রাখার সময় নিচে একটা লাইন ভরতে থাকে; ভরলে কমান্ড চলে
+        if (key.holdCmd != null && down && !longFired) {
+            val progress = ((SystemClock.uptimeMillis() - downAt) / HOLD_MS.toFloat()).coerceIn(0f, 1f)
+            barPaint.color = colors.accent
+            val h = 3 * density
+            canvas.drawRoundRect(
+                bgRect.left, bgRect.bottom - h, bgRect.left + bgRect.width() * progress, bgRect.bottom,
+                h / 2, h / 2, barPaint,
+            )
+            postInvalidateOnAnimation()
         }
     }
 
@@ -218,13 +242,14 @@ class KeyView(
             MotionEvent.ACTION_DOWN -> {
                 down = true
                 longFired = false
+                downAt = SystemClock.uptimeMillis()
                 invalidate()
                 performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
                 if (key.act == Act.BACKSPACE) {
                     onPress(key)
                     uiHandler.postDelayed(repeatRunnable, 400)
                 } else if (onLongPress != null) {
-                    uiHandler.postDelayed(longRunnable, 450)
+                    uiHandler.postDelayed(longRunnable, if (key.holdCmd != null) HOLD_MS else 450L)
                 }
             }
             MotionEvent.ACTION_MOVE -> if (down && !isInside(e)) release()
@@ -245,5 +270,7 @@ class KeyView(
 
     companion object {
         const val ENTER_ICON = "⏎"
+        /** কাট/কপি/পেস্ট ইত্যাদির জন্য চেপে ধরার সময় */
+        const val HOLD_MS = 2000L
     }
 }

@@ -29,6 +29,8 @@ class KeyboardRoot(
         fun onToggleLanguage()
         fun onLanguagePicker()
         fun onEmojiPicked(emoji: String)
+        /** ২ সেকেন্ড চেপে ধরার এডিট কমান্ড: x কাট, c কপি, v পেস্ট, z আনডু, y রিডু, a সব নির্বাচন */
+        fun onEditCommand(cmd: Char)
     }
 
     private val colors = KeyColors(context)
@@ -43,12 +45,15 @@ class KeyboardRoot(
     private var enterLabel = KeyView.ENTER_ICON
     private var emojiShown = false
     private val letterViews = HashMap<Char, KeyView>()
-    private var hints: Map<Char, String>? = null
+    private var hints: Map<Char, BanglaPhonetic.Hint>? = null
 
     init {
         val landscape = resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
+        // সেটিংসে ঠিক করা উচ্চতা (৭০%–১৫০%)
+        val pct = context.getSharedPreferences("keyboard", Context.MODE_PRIVATE)
+            .getInt("height_pct", 100).coerceIn(70, 150)
         keyHeightPx = TypedValue.applyDimension(
-            TypedValue.COMPLEX_UNIT_DIP, if (landscape) 42f else 52f, resources.displayMetrics
+            TypedValue.COMPLEX_UNIT_DIP, (if (landscape) 42f else 52f) * pct / 100f, resources.displayMetrics
         ).toInt()
         val totalHeight = keyHeightPx * 5 + (6 * density).toInt()
 
@@ -83,14 +88,14 @@ class KeyboardRoot(
     }
 
     /** বাংলা মোডে চলমান শব্দের পর প্রতিটি অক্ষর-কী চাপলে কী আসবে। null = স্থির ইঙ্গিত */
-    fun setHints(map: Map<Char, String>?) {
+    fun setHints(map: Map<Char, BanglaPhonetic.Hint>?) {
         hints = map
         applyHints()
     }
 
     private fun applyHints() {
         val m = hints
-        for ((c, v) in letterViews) v.setDynamic(m != null, m?.get(c))
+        for ((c, v) in letterViews) v.setDynamic(m != null, m?.get(c)?.text, m?.get(c)?.green == true)
     }
 
     fun setEnterLabel(label: String) {
@@ -129,8 +134,11 @@ class KeyboardRoot(
         for (row in rows) {
             val rowView = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL }
             for (key in row) {
-                val longPress: ((Key) -> Unit)? =
-                    if (key.act == Act.LANG) { _ -> listener.onLanguagePicker() } else null
+                val longPress: ((Key) -> Unit)? = when {
+                    key.act == Act.LANG -> { _ -> listener.onLanguagePicker() }
+                    key.holdCmd != null -> { k -> listener.onEditCommand(k.holdCmd!!) }
+                    else -> null
+                }
                 val view = KeyView(context, key, colors, ::handleKey, longPress)
                 if (key.act == Act.LETTER) letterViews[key.text[0].lowercaseChar()] = view
                 rowView.addView(view, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.MATCH_PARENT, key.weight))

@@ -16,8 +16,8 @@ object BanglaPhonetic {
 
     // ----- ব্যঞ্জন -----
     private val consonants: Map<String, String> = mapOf(
-        "k" to "ক", "kh" to "খ", "g" to "গ", "gh" to "ঘ", "ng" to "ঙ",
-        "c" to "চ", "ch" to "ছ", "j" to "জ", "jh" to "ঝ", "qny" to "ঞ",
+        "k" to "ক", "kh" to "খ", "g" to "গ", "gh" to "ঘ", "qng" to "ঙ",
+        "c" to "চ", "ch" to "ছ", "j" to "জ", "jh" to "ঝ", "qn" to "ঞ",
         "tt" to "ট", "tth" to "ঠ", "dd" to "ড", "ddh" to "ঢ", "nn" to "ণ",
         "t" to "ত", "th" to "থ", "d" to "দ", "dh" to "ধ", "n" to "ন",
         "p" to "প", "f" to "ফ", "ph" to "ফ", "b" to "ব", "bh" to "ভ", "v" to "ভ",
@@ -76,6 +76,8 @@ object BanglaPhonetic {
         var wordStart = true
         // শব্দের শুরুর 'র' — এর পর z এলে রেফ নয়, র‍্য (য-ফলা) হয়
         var raInitial = false
+        // স্বরের পরে q দিয়ে ভাঙা হয়েছে — পরের z এ য-ফলা হবে না (অযথা = oqzotha)
+        var qBreak = false
         // শেষ টোকেনটি মার্কার-যোগ্য হলে: 'o' / 'q' (আউটপুটে অদৃশ্য), 'Q' (আউটপুটে আক্ষরিক q আছে)
         var pending = ' '
         var i = 0
@@ -84,6 +86,8 @@ object BanglaPhonetic {
             val c = src[i]
             val wasRaInitial = raInitial
             raInitial = false
+            val wasQBreak = qBreak
+            qBreak = false
             pending = ' '
 
             // হসন্ত + ZWNJ  ( ,, )
@@ -91,7 +95,10 @@ object BanglaPhonetic {
                 out.append(HASANTA).append(ZWNJ); consAfter = false; wordStart = false; i += 2; continue
             }
 
-            if (c == 'q' && !src.startsWith("qny", i)) {
+            // qn = ঞ; তবে ন/ণ-এর পরে q শুধু ভাঙার চিহ্ন (ভিন্ন = bhinqno, ন্ন = nqn)
+            val nasalQ = src.startsWith("qn", i) &&
+                !(consAfter && out.isNotEmpty() && (out[out.length - 1] == 'ন' || out[out.length - 1] == 'ণ'))
+            if (c == 'q' && !nasalQ) {
                 // qw = ঃ (বিসর্গ)
                 if (src.startsWith("qw", i)) {
                     out.append("ঃ"); consAfter = false; wordStart = false; i += 2; continue
@@ -113,13 +120,13 @@ object BanglaPhonetic {
                 }
                 // স্বরের পরে / শুরুতে: বিশেষ চিহ্ন
                 when {
-                    src.startsWith("qng", i) -> { out.append("ং"); wordStart = false; i += 3; continue }
                     src.startsWith("qt", i) -> { out.append("ৎ"); wordStart = false; i += 2; continue }
                     src.startsWith("qq", i) -> { out.append("ঁ"); wordStart = false; i += 2; continue }
                     src.startsWith("qk", i) -> { out.append("৳"); wordStart = false; i += 2; continue }
                 }
                 // স্বর ভাঙতে q (boqi = বই)
                 if (!wordStart && i + 1 < src.length && isLetter(src[i + 1])) {
+                    qBreak = true
                     i += 1; continue
                 }
                 // শুধু q: q-ই থাকে
@@ -145,10 +152,21 @@ object BanglaPhonetic {
                     i += 1; matched = true; break
                 }
 
+                // ng = ং (অনুস্বার)
+                if (tok == "ng") {
+                    out.append("ং"); consAfter = false; wordStart = false
+                    i += 2; matched = true; break
+                }
+
                 val cons = consonants[tok]
                 if (cons != null) {
                     val startsWord = wordStart && !consAfter
-                    if (tok == "z" && consAfter && wasRaInitial) {
+                    if (tok == "z" && !consAfter && !wasQBreak && out.isNotEmpty() &&
+                        out[out.length - 1] in '\u0985'..'\u0994'
+                    ) {
+                        // স্বরবর্ণের সাথে য-ফলা: অ্যা = oza  (ভাঙতে q: অযথা = oqzotha)
+                        out.append(HASANTA).append(cons)
+                    } else if (tok == "z" && consAfter && wasRaInitial) {
                         // র‍্য : র + ZWJ + হসন্ত + য
                         out.append(ZWJ).append(HASANTA).append(cons)
                     } else {
@@ -212,7 +230,7 @@ object BanglaPhonetic {
             if (j > 0 && s[j - 1] == HASANTA[0]) {
                 var m = j - 1
                 if (m > 0 && s[m - 1] == '\u200D') m--
-                if (m > 0 && (isCons(s[m - 1]) || s[m - 1] == NUKTA[0])) { j = m; continue }
+                if (m > 0 && (isCons(s[m - 1]) || s[m - 1] == NUKTA[0] || s[m - 1] in '\u0985'..'\u0994')) { j = m; continue }
             }
             break
         }
@@ -224,35 +242,33 @@ object BanglaPhonetic {
         return if (unit.length > 7) unit.substring(unit.length - 7) else unit
     }
 
-    private fun endsWithConsonant(s: String): Boolean {
-        if (s.isEmpty()) return false
-        val last = s[s.length - 1]
-        return isCons(last) || last == NUKTA[0]
+    /** কী-র গায়ের ইঙ্গিত; [green] = চলমান 'q'-এর কারণে যে ফল বদলাচ্ছে */
+    class Hint(val text: String, val green: Boolean)
+
+    private fun hintFor(buffer: String, c: Char): String? {
+        val base = convert(buffer)
+        val next = convert(buffer + c)
+        if (next == base) return null
+        val h = tailUnit(next)
+        return if (h.isEmpty() || h == c.toString()) null else h
     }
 
     /**
      * বাফারের পর প্রতিটি অক্ষর-কী চাপলে কী আসবে — কী-র গায়ে দেখানোর জন্য।
      * যে কী কিছু বদলায় না (যেমন ব্যঞ্জনের পরে o/q) তার জন্য এন্ট্রি থাকে না।
+     * 'q' সক্রিয় থাকলে (শেষ কী q) যেসব কী-র ফল q-এর কারণে বদলায় সেগুলো green।
      */
-    fun nextHints(buffer: String): Map<Char, String> {
-        val base = convert(buffer)
-        val res = HashMap<Char, String>()
-        for (c in 'a'..'z') {
-            val next = convert(buffer + c)
-            if (next == base) continue
-            val h = tailUnit(next)
-            if (h.isEmpty() || h == c.toString()) continue
-            res[c] = h
-        }
-        // qng / qny — তিন ধাপের টোকেন
+    fun nextHints(buffer: String): Map<Char, Hint> {
         val b = buffer.lowercase()
-        if (b.endsWith("q") && !b.endsWith("qq")) {
-            val before = convert(b.dropLast(1))
-            res['n'] = if (endsWithConsonant(before)) "ঞ" else "ং ঞ"
-        } else if (b.endsWith("qn")) {
-            val before = convert(b.dropLast(2))
-            if (!endsWithConsonant(before)) res['g'] = "ং"
-            res['y'] = "ঞ"
+        val p = preview(b)
+        val qActive = p.markerIndex >= 0 && p.marker == 'q' && b.endsWith("q")
+        val without = if (qActive) b.dropLast(1) else null
+        val res = HashMap<Char, Hint>()
+        for (c in 'a'..'z') {
+            val h = hintFor(b, c)
+            if (h == null) continue
+            val green = without != null && hintFor(without, c) != h
+            res[c] = Hint(h, green)
         }
         return res
     }

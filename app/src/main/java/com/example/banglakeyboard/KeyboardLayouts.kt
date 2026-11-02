@@ -33,6 +33,9 @@ data class Key(
     val accent: Boolean = false,
     val active: Boolean = false,
     val tone: Tone = Tone.NONE,
+    /** ২ সেকেন্ড চেপে ধরলে যে এডিট কমান্ড চলবে (x c v z y a), আর কী-র কোণে তার ছোট নাম */
+    val holdCmd: Char? = null,
+    val holdLabel: String? = null,
 )
 
 object KeyboardLayouts {
@@ -48,6 +51,16 @@ object KeyboardLayouts {
 
     private const val BN_DIGITS = "০১২৩৪৫৬৭৮৯"
 
+    /** ২ সেকেন্ড চেপে ধরার কমান্ড: কী → কোণের নাম (কাজ BanglaKeyboardService.onEditCommand-এ) */
+    val holdCommands = mapOf(
+        'x' to "কাট",      // Cut
+        'c' to "কপি",      // Copy
+        'v' to "পেস্ট",    // Paste
+        'z' to "আনডু",     // Undo
+        'y' to "রিডু",     // Redo
+        'a' to "সব",       // Select All
+    )
+
     private fun spacer(w: Float) = Key("", Act.SPACER, weight = w)
 
     private fun letters(chars: String, bangla: Boolean, shift: ShiftState): List<Key> =
@@ -59,6 +72,8 @@ object KeyboardLayouts {
                 act = Act.LETTER,
                 text = shown.toString(),
                 hint = if (bangla) hints[c] else null,
+                holdCmd = if (c in holdCommands) c else null,
+                holdLabel = holdCommands[c],
                 // বাংলায়: o = যুক্তাক্ষরে বাধা (লাল), q = ভাঙার চিহ্ন (সবুজ)
                 tone = if (!bangla) Tone.NONE else when (c) {
                     'o' -> Tone.RED

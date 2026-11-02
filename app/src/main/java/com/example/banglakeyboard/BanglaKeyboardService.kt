@@ -10,6 +10,7 @@ import android.view.KeyEvent
 import android.view.View
 import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.InputMethodManager
+import android.widget.Toast
 
 /**
  * বাংলা ফোনেটিক কিবোর্ড (IME) সার্ভিস।
@@ -29,7 +30,10 @@ class BanglaKeyboardService : InputMethodService(), KeyboardRoot.Listener {
 
     private val prefs by lazy { getSharedPreferences("keyboard", MODE_PRIVATE) }
 
+    private var appliedHeight = 100
+
     override fun onCreateInputView(): View {
+        appliedHeight = prefs.getInt("height_pct", 100)
         bangla = prefs.getBoolean("bangla", true)
         val view = KeyboardRoot(this, this)
         view.setLanguage(bangla)
@@ -42,6 +46,10 @@ class BanglaKeyboardService : InputMethodService(), KeyboardRoot.Listener {
     override fun onStartInputView(info: EditorInfo, restarting: Boolean) {
         super.onStartInputView(info, restarting)
         buffer.clear()
+        // সেটিংসে উচ্চতা বদলালে কিবোর্ড নতুন করে বানাই
+        if (root != null && prefs.getInt("height_pct", 100) != appliedHeight) {
+            setInputView(onCreateInputView())
+        }
 
         val cls = info.inputType and InputType.TYPE_MASK_CLASS
         val variation = info.inputType and InputType.TYPE_MASK_VARIATION
@@ -248,6 +256,35 @@ class BanglaKeyboardService : InputMethodService(), KeyboardRoot.Listener {
     override fun onEmojiPicked(emoji: String) {
         commitComposing()
         currentInputConnection?.commitText(emoji, 1)
+    }
+
+    /**
+     * ২ সেকেন্ড চেপে ধরার কমান্ড। চলমান বাংলা শব্দ আগে পাকা করা হয়, যাতে কপি/কাট ঠিক লেখার ওপর চলে।
+     * কাট/কপি/পেস্ট/সব-নির্বাচন সরাসরি টেক্সট ফিল্ডে; আনডু/রিডু Ctrl+Z / Ctrl+Shift+Z দিয়ে।
+     */
+    override fun onEditCommand(cmd: Char) {
+        commitComposing()
+        val ic = currentInputConnection ?: return
+        val name = KeyboardLayouts.holdCommands[cmd] ?: return
+        when (cmd) {
+            'x' -> ic.performContextMenuAction(android.R.id.cut)
+            'c' -> ic.performContextMenuAction(android.R.id.copy)
+            'v' -> ic.performContextMenuAction(android.R.id.paste)
+            'a' -> ic.performContextMenuAction(android.R.id.selectAll)
+            'z' -> sendCtrlKey(KeyEvent.KEYCODE_Z, withShift = false)
+            'y' -> sendCtrlKey(KeyEvent.KEYCODE_Z, withShift = true) // Ctrl+Shift+Z = রিডু
+            else -> return
+        }
+        Toast.makeText(this, name, Toast.LENGTH_SHORT).show()
+    }
+
+    private fun sendCtrlKey(keyCode: Int, withShift: Boolean) {
+        val ic = currentInputConnection ?: return
+        var meta = KeyEvent.META_CTRL_ON or KeyEvent.META_CTRL_LEFT_ON
+        if (withShift) meta = meta or KeyEvent.META_SHIFT_ON or KeyEvent.META_SHIFT_LEFT_ON
+        val now = SystemClock.uptimeMillis()
+        ic.sendKeyEvent(KeyEvent(now, now, KeyEvent.ACTION_DOWN, keyCode, 0, meta))
+        ic.sendKeyEvent(KeyEvent(now, now, KeyEvent.ACTION_UP, keyCode, 0, meta))
     }
 
     private companion object {
