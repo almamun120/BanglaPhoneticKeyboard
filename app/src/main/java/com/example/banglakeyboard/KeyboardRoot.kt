@@ -42,6 +42,8 @@ class KeyboardRoot(
     private var shift = ShiftState.OFF
     private var enterLabel = KeyView.ENTER_ICON
     private var emojiShown = false
+    private val letterViews = HashMap<Char, KeyView>()
+    private var hints: Map<Char, String>? = null
 
     init {
         val landscape = resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
@@ -80,6 +82,17 @@ class KeyboardRoot(
         rebuild()
     }
 
+    /** বাংলা মোডে চলমান শব্দের পর প্রতিটি অক্ষর-কী চাপলে কী আসবে। null = স্থির ইঙ্গিত */
+    fun setHints(map: Map<Char, String>?) {
+        hints = map
+        applyHints()
+    }
+
+    private fun applyHints() {
+        val m = hints
+        for ((c, v) in letterViews) v.setDynamic(m != null, m?.get(c))
+    }
+
     fun setEnterLabel(label: String) {
         if (enterLabel == label) return
         enterLabel = label
@@ -111,6 +124,7 @@ class KeyboardRoot(
 
     private fun rebuild() {
         rowsContainer.removeAllViews()
+        letterViews.clear()
         val rows = KeyboardLayouts.rows(layer, bangla, shift, enterLabel)
         for (row in rows) {
             val rowView = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL }
@@ -118,10 +132,12 @@ class KeyboardRoot(
                 val longPress: ((Key) -> Unit)? =
                     if (key.act == Act.LANG) { _ -> listener.onLanguagePicker() } else null
                 val view = KeyView(context, key, colors, ::handleKey, longPress)
+                if (key.act == Act.LETTER) letterViews[key.text[0].lowercaseChar()] = view
                 rowView.addView(view, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.MATCH_PARENT, key.weight))
             }
             rowsContainer.addView(rowView, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, keyHeightPx))
         }
+        applyHints()
     }
 
     private fun handleKey(key: Key) {

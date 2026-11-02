@@ -10,7 +10,8 @@ package com.example.banglakeyboard
 object BanglaPhonetic {
 
     private const val HASANTA = "্"
-    private const val ZWNJ = "‌"
+    private const val ZWNJ = "\u200C"
+    private const val ZWJ = "\u200D"
     private const val NUKTA = "়"
 
     // ----- ব্যঞ্জন -----
@@ -24,7 +25,6 @@ object BanglaPhonetic {
         "s" to "স", "ss" to "শ", "sss" to "ষ", "h" to "হ",
         "x" to "ক${HASANTA}ষ",
         "rr" to "ড$NUKTA", "rrh" to "ঢ$NUKTA",
-        "w" to "ব",
     )
 
     // ----- স্বর: টোকেন -> (স্বতন্ত্র রূপ, কার) -----
@@ -49,8 +49,23 @@ object BanglaPhonetic {
 
     private fun isLetter(c: Char) = c in 'a'..'z'
 
-    /** ল্যাটিন লেখা → বাংলা। */
-    fun convert(input: String): String {
+    /** টাইপ চলাকালীন দেখানোর ফল। [markerIndex] >= 0 হলে ওই অবস্থানের অক্ষরটি রঙিন মার্কার ('o' লাল, 'q' সবুজ)। */
+    class Preview(val text: String, val markerIndex: Int, val marker: Char)
+
+    /** ল্যাটিন লেখা → বাংলা (চূড়ান্ত, মার্কার ছাড়া)। */
+    fun convert(input: String): String = run(input, false).text
+
+    /**
+     * টাইপ চলাকালীন composing টেক্সট। শেষ কী যদি যুক্তাক্ষর-বাধা 'o' (ব্যঞ্জনের পর) বা
+     * ভাঙার চিহ্ন 'q' হয়, তবে সেটি দৃশ্যমান মার্কার হিসেবে শেষে দেখায়; পরের অক্ষর এলে সরে যায়।
+     */
+    fun preview(input: String): Preview = run(input, true)
+
+    private fun endsWithPlainRa(out: StringBuilder): Boolean =
+        out.isNotEmpty() && out[out.length - 1] == 'র' &&
+            (out.length < 2 || out[out.length - 2] != HASANTA[0])
+
+    private fun run(input: String, preview: Boolean): Preview {
         // শুধু A–Z ছোট হাতের করা হয় (দৈর্ঘ্য অপরিবর্তিত থাকে)
         val src = buildString(input.length) {
             for (ch in input) append(if (ch in 'A'..'Z') (ch + 32) else ch)
@@ -59,28 +74,42 @@ object BanglaPhonetic {
         // consAfter = সর্বশেষ আউটপুট একটি ব্যঞ্জন (কার/যুক্তাক্ষর নেওয়ার জন্য প্রস্তুত)
         var consAfter = false
         var wordStart = true
+        // শব্দের শুরুর 'র' — এর পর z এলে রেফ নয়, র‍্য (য-ফলা) হয়
+        var raInitial = false
+        // শেষ টোকেনটি মার্কার-যোগ্য হলে: 'o' / 'q' (আউটপুটে অদৃশ্য), 'Q' (আউটপুটে আক্ষরিক q আছে)
+        var pending = ' '
         var i = 0
 
         while (i < src.length) {
             val c = src[i]
+            val wasRaInitial = raInitial
+            raInitial = false
+            pending = ' '
 
-            // ঃ  ( :: )
-            if (c == ':' && src.startsWith("::", i)) {
-                out.append("ঃ"); consAfter = false; wordStart = false; i += 2; continue
-            }
             // হসন্ত + ZWNJ  ( ,, )
             if (c == ',' && src.startsWith(",,", i)) {
                 out.append(HASANTA).append(ZWNJ); consAfter = false; wordStart = false; i += 2; continue
             }
 
             if (c == 'q' && !src.startsWith("qny", i)) {
+                // qw = ঃ (বিসর্গ)
+                if (src.startsWith("qw", i)) {
+                    out.append("ঃ"); consAfter = false; wordStart = false; i += 2; continue
+                }
                 // qr = জোড়া ছাড়া র (ধর্ম = dhqrm)
                 if (src.startsWith("qr", i)) {
                     out.append("র"); consAfter = true; wordStart = false; i += 2; continue
                 }
                 if (consAfter) {
+                    // rqz = র‍্য (র-এর সাথে য-ফলা, রেফ নয়)
+                    if (src.startsWith("qz", i) && endsWithPlainRa(out)) {
+                        out.append(ZWJ).append(HASANTA).append("য")
+                        consAfter = true; wordStart = false; i += 2; continue
+                    }
                     // ব্যঞ্জনের পরে q = ভাঙার চিহ্ন, কিছু আসে না, যুক্তাক্ষর তবুও হয়
-                    i += 1; continue
+                    i += 1
+                    if (i == src.length) pending = 'q'
+                    continue
                 }
                 // স্বরের পরে / শুরুতে: বিশেষ চিহ্ন
                 when {
@@ -94,7 +123,9 @@ object BanglaPhonetic {
                     i += 1; continue
                 }
                 // শুধু q: q-ই থাকে
-                out.append('q'); consAfter = false; wordStart = false; i += 1; continue
+                out.append('q'); consAfter = false; wordStart = false; i += 1
+                if (i == src.length) pending = 'Q'
+                continue
             }
 
             // সবচেয়ে বড় টোকেন আগে (৩ → ২ → ১)
@@ -102,16 +133,38 @@ object BanglaPhonetic {
             var len = minOf(3, src.length - i)
             while (len >= 1) {
                 val tok = src.substring(i, i + len)
+
+                // w: ব্যঞ্জনের পরে ব-ফলা, অন্যথায় (শুরুতে/স্বরের পরে) ও
+                if (tok == "w") {
+                    if (consAfter) {
+                        out.append(HASANTA).append("ব"); consAfter = true
+                    } else {
+                        out.append("ও"); consAfter = false
+                    }
+                    wordStart = false
+                    i += 1; matched = true; break
+                }
+
                 val cons = consonants[tok]
                 if (cons != null) {
-                    if (consAfter) out.append(HASANTA)
-                    out.append(cons)
+                    val startsWord = wordStart && !consAfter
+                    if (tok == "z" && consAfter && wasRaInitial) {
+                        // র‍্য : র + ZWJ + হসন্ত + য
+                        out.append(ZWJ).append(HASANTA).append(cons)
+                    } else {
+                        // b সবসময় স্বাধীন ব; যুক্ত হয় না (ব-ফলা = w)
+                        if (consAfter && tok != "b") out.append(HASANTA)
+                        out.append(cons)
+                    }
+                    raInitial = tok == "r" && startsWord
                     consAfter = true; wordStart = false
                     i += len; matched = true; break
                 }
                 val v = vowels[tok]
                 if (v != null) {
                     out.append(if (consAfter) v.second else v.first)
+                    // ব্যঞ্জনের পরে একা 'o' অদৃশ্য — শেষ কী হলে মার্কার দেখাই
+                    if (tok == "o" && consAfter && i + len == src.length) pending = 'o'
                     consAfter = false; wordStart = false
                     i += len; matched = true; break
                 }
@@ -128,6 +181,79 @@ object BanglaPhonetic {
             }
             consAfter = false; wordStart = true; i += 1
         }
-        return out.toString()
+
+        var markerIndex = -1
+        var marker = ' '
+        if (preview) {
+            when (pending) {
+                'o', 'q' -> { markerIndex = out.length; marker = pending; out.append(pending) }
+                'Q' -> { markerIndex = out.length - 1; marker = 'q' }
+            }
+        }
+        return Preview(out.toString(), markerIndex, marker)
+    }
+
+    // ---------- পরের কী-এর ইঙ্গিত ----------
+
+    private fun isCons(c: Char) = c in '\u0995'..'\u09B9' || c == '\u09DC' || c == '\u09DD' || c == '\u09DF'
+    private fun isSign(c: Char) = c in '\u09BE'..'\u09CC' || c == '\u0981' || c == '\u0982' || c == '\u0983'
+
+    /** লেখার শেষ "অক্ষর-একক": যুক্তাক্ষর + কার/চিহ্ন (যেমন ক্ষ্মা, কা, র‍্য)। */
+    fun tailUnit(s: String): String {
+        if (s.isEmpty()) return ""
+        var i = s.length
+        while (i > 0 && isSign(s[i - 1])) i--
+        var j = i
+        while (true) {
+            var k = j
+            if (k > 0 && s[k - 1] == NUKTA[0]) k--
+            if (k > 0 && isCons(s[k - 1])) k-- else break
+            j = k
+            if (j > 0 && s[j - 1] == HASANTA[0]) {
+                var m = j - 1
+                if (m > 0 && s[m - 1] == '\u200D') m--
+                if (m > 0 && (isCons(s[m - 1]) || s[m - 1] == NUKTA[0])) { j = m; continue }
+            }
+            break
+        }
+        val unit = when {
+            j < i -> s.substring(j)
+            i < s.length -> s.substring(i)
+            else -> s.substring(s.length - 1)
+        }
+        return if (unit.length > 7) unit.substring(unit.length - 7) else unit
+    }
+
+    private fun endsWithConsonant(s: String): Boolean {
+        if (s.isEmpty()) return false
+        val last = s[s.length - 1]
+        return isCons(last) || last == NUKTA[0]
+    }
+
+    /**
+     * বাফারের পর প্রতিটি অক্ষর-কী চাপলে কী আসবে — কী-র গায়ে দেখানোর জন্য।
+     * যে কী কিছু বদলায় না (যেমন ব্যঞ্জনের পরে o/q) তার জন্য এন্ট্রি থাকে না।
+     */
+    fun nextHints(buffer: String): Map<Char, String> {
+        val base = convert(buffer)
+        val res = HashMap<Char, String>()
+        for (c in 'a'..'z') {
+            val next = convert(buffer + c)
+            if (next == base) continue
+            val h = tailUnit(next)
+            if (h.isEmpty() || h == c.toString()) continue
+            res[c] = h
+        }
+        // qng / qny — তিন ধাপের টোকেন
+        val b = buffer.lowercase()
+        if (b.endsWith("q") && !b.endsWith("qq")) {
+            val before = convert(b.dropLast(1))
+            res['n'] = if (endsWithConsonant(before)) "ঞ" else "ং ঞ"
+        } else if (b.endsWith("qn")) {
+            val before = convert(b.dropLast(2))
+            if (!endsWithConsonant(before)) res['g'] = "ং"
+            res['y'] = "ঞ"
+        }
+        return res
     }
 }

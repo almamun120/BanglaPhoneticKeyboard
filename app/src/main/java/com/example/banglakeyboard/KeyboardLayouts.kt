@@ -3,7 +3,7 @@ package com.example.banglakeyboard
 /** কী চাপলে কী হবে। */
 enum class Act {
     LETTER,      // বাংলা মোডে composing বাফারে যায়, ইংরেজিতে সরাসরি লেখা হয়
-    COMPOSE,     // ':' ও ',' — বাংলা মোডে বাফারে যায় (:: = ঃ, ,, = হসন্ত), ইংরেজিতে সরাসরি
+    COMPOSE,     // ',' — বাংলা মোডে বাফারে যায় (,, = হসন্ত), ইংরেজিতে সরাসরি
     TEXT,        // যেমন আছে তেমন লেখা (আগে composing শেষ করে)
     SPACE,
     BACKSPACE,
@@ -16,6 +16,8 @@ enum class Act {
     SYMBOL_PAGE,
     SPACER
 }
+
+enum class Tone { NONE, RED, GREEN }
 
 enum class ShiftState { OFF, ON, CAPS }
 
@@ -30,6 +32,7 @@ data class Key(
     val func: Boolean = false,
     val accent: Boolean = false,
     val active: Boolean = false,
+    val tone: Tone = Tone.NONE,
 )
 
 object KeyboardLayouts {
@@ -39,7 +42,7 @@ object KeyboardLayouts {
         'a' to "আ", 'b' to "ব", 'c' to "চ", 'd' to "দ", 'e' to "এ", 'f' to "ফ",
         'g' to "গ", 'h' to "হ", 'i' to "ই", 'j' to "জ", 'k' to "ক", 'l' to "ল",
         'm' to "ম", 'n' to "ন", 'o' to "অ", 'p' to "প", 'q' to "ং", 'r' to "র",
-        's' to "স", 't' to "ত", 'u' to "উ", 'v' to "ভ", 'w' to "ব", 'x' to "ক্ষ",
+        's' to "স", 't' to "ত", 'u' to "উ", 'v' to "ভ", 'w' to "ও", 'x' to "ক্ষ",
         'y' to "য়", 'z' to "য",
     )
 
@@ -49,12 +52,19 @@ object KeyboardLayouts {
 
     private fun letters(chars: String, bangla: Boolean, shift: ShiftState): List<Key> =
         chars.map { c ->
-            val shown = if (!bangla && shift != ShiftState.OFF) c.uppercaseChar() else c
+            // শিফট শুধু কী-র লেখা বড়/ছোট দেখায়; বাংলা টাইপিংয়ে প্রভাব নেই
+            val shown = if (shift != ShiftState.OFF) c.uppercaseChar() else c
             Key(
                 label = shown.toString(),
                 act = Act.LETTER,
                 text = shown.toString(),
                 hint = if (bangla) hints[c] else null,
+                // বাংলায়: o = যুক্তাক্ষরে বাধা (লাল), q = ভাঙার চিহ্ন (সবুজ)
+                tone = if (!bangla) Tone.NONE else when (c) {
+                    'o' -> Tone.RED
+                    'q' -> Tone.GREEN
+                    else -> Tone.NONE
+                },
             )
         }
 
@@ -95,18 +105,13 @@ object KeyboardLayouts {
                 result.add(row2)
 
                 val row3 = ArrayList<Key>()
-                if (bangla) {
-                    // শিফট লাগে না; এই জায়গায় ':' কী (দুইবার = ঃ)
-                    row3.add(Key(":", Act.COMPOSE, hint = "ঃ", weight = 1.5f, func = true))
-                } else {
-                    row3.add(
-                        Key(
-                            label = if (shift == ShiftState.CAPS) "⇪" else "⇧",
-                            act = Act.SHIFT, weight = 1.5f, func = true,
-                            active = shift != ShiftState.OFF,
-                        )
+                row3.add(
+                    Key(
+                        label = if (shift == ShiftState.CAPS) "⇪" else "⇧",
+                        act = Act.SHIFT, weight = 1.5f, func = true,
+                        active = shift != ShiftState.OFF,
                     )
-                }
+                )
                 row3.addAll(letters("zxcvbnm", bangla, shift))
                 row3.add(backspace)
                 result.add(row3)

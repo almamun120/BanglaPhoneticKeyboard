@@ -2,6 +2,9 @@ package com.example.banglakeyboard
 
 import android.inputmethodservice.InputMethodService
 import android.os.SystemClock
+import android.text.SpannableString
+import android.text.Spanned
+import android.text.style.ForegroundColorSpan
 import android.text.InputType
 import android.view.KeyEvent
 import android.view.View
@@ -60,6 +63,7 @@ class BanglaKeyboardService : InputMethodService(), KeyboardRoot.Listener {
             setEnterLabel(enterLabelFor(info))
         }
         refreshShift()
+        updateHints()
     }
 
     override fun onFinishInput() {
@@ -77,6 +81,7 @@ class BanglaKeyboardService : InputMethodService(), KeyboardRoot.Listener {
         if (buffer.isNotEmpty() && (newSelStart != candidatesEnd || newSelEnd != candidatesEnd)) {
             buffer.clear()
             currentInputConnection?.finishComposingText()
+            updateHints()
         }
     }
 
@@ -96,19 +101,43 @@ class BanglaKeyboardService : InputMethodService(), KeyboardRoot.Listener {
 
     private fun updateComposing() {
         val ic = currentInputConnection ?: return
-        ic.setComposingText(BanglaPhonetic.convert(buffer.toString()), 1)
+        val p = BanglaPhonetic.preview(buffer.toString())
+        val shown: CharSequence = if (p.markerIndex >= 0) {
+            // o = লাল, q = সবুজ মার্কার; পরের অক্ষর এলে নিজে সরে যায়
+            SpannableString(p.text).apply {
+                val color = if (p.marker == 'o') MARK_RED else MARK_GREEN
+                setSpan(
+                    ForegroundColorSpan(color), p.markerIndex, p.markerIndex + 1,
+                    Spanned.SPAN_EXCLUSIVE_EXCLUSIVE,
+                )
+            }
+        } else p.text
+        ic.setComposingText(shown, 1)
+        updateHints()
+    }
+
+    /** কী-গুলোর গায়ে "এরপর এটা চাপলে কী আসবে" ইঙ্গিত */
+    private fun updateHints() {
+        val r = root ?: return
+        if (!bangla || buffer.isEmpty()) r.setHints(null)
+        else r.setHints(BanglaPhonetic.nextHints(buffer.toString()))
     }
 
     private fun commitComposing() {
         if (buffer.isEmpty()) return
-        currentInputConnection?.finishComposingText()
+        // মার্কার (o/q) বাদ দিয়ে চূড়ান্ত লেখা পাকা করি
+        currentInputConnection?.apply {
+            setComposingText(BanglaPhonetic.convert(buffer.toString()), 1)
+            finishComposingText()
+        }
         buffer.clear()
+        updateHints()
     }
 
     /** ইংরেজি মোডে বাক্যের শুরুতে স্বয়ংক্রিয় বড় হাতের অক্ষর */
     private fun refreshShift() {
         if (bangla) {
-            shift = ShiftState.OFF
+            // শিফট বাংলায় শুধু চোখে দেখার (বড়/ছোট হরফ); নিজে থেকে বদলায় না
         } else if (shift != ShiftState.CAPS) {
             val info = currentInputEditorInfo
             val caps = if (info != null && info.inputType != InputType.TYPE_NULL) {
@@ -125,6 +154,7 @@ class BanglaKeyboardService : InputMethodService(), KeyboardRoot.Listener {
         if (bangla) {
             buffer.append(ch)
             updateComposing()
+            if (shift == ShiftState.ON) { shift = ShiftState.OFF; root?.setShift(shift) }
         } else {
             val out = if (shift != ShiftState.OFF) ch.uppercaseChar() else ch
             currentInputConnection?.commitText(out.toString(), 1)
@@ -163,7 +193,7 @@ class BanglaKeyboardService : InputMethodService(), KeyboardRoot.Listener {
         val ic = currentInputConnection ?: return
         if (buffer.isNotEmpty()) {
             buffer.deleteCharAt(buffer.length - 1)
-            if (buffer.isEmpty()) ic.commitText("", 1) else updateComposing()
+            if (buffer.isEmpty()) { ic.commitText("", 1); updateHints() } else updateComposing()
         } else {
             sendDownUpKeyEvents(KeyEvent.KEYCODE_DEL)
         }
@@ -203,8 +233,11 @@ class BanglaKeyboardService : InputMethodService(), KeyboardRoot.Listener {
         commitComposing()
         bangla = !bangla
         prefs.edit().putBoolean("bangla", bangla).apply()
+        shift = ShiftState.OFF
+        root?.setShift(shift)
         root?.setLanguage(bangla)
         refreshShift()
+        updateHints()
     }
 
     override fun onLanguagePicker() {
@@ -215,5 +248,10 @@ class BanglaKeyboardService : InputMethodService(), KeyboardRoot.Listener {
     override fun onEmojiPicked(emoji: String) {
         commitComposing()
         currentInputConnection?.commitText(emoji, 1)
+    }
+
+    private companion object {
+        const val MARK_RED = 0xFFE53935.toInt()
+        const val MARK_GREEN = 0xFF1E9E45.toInt()
     }
 }

@@ -4,6 +4,7 @@ import android.annotation.SuppressLint
 import android.content.Context
 import android.graphics.Canvas
 import android.graphics.Paint
+import android.graphics.Typeface
 import android.graphics.Path
 import android.graphics.RectF
 import android.os.Handler
@@ -22,6 +23,8 @@ class KeyColors(context: Context) {
     val text = context.getColor(R.color.kb_text)
     val hint = context.getColor(R.color.kb_hint)
     val accent = context.getColor(R.color.kb_accent)
+    val red = context.getColor(R.color.kb_blocker_o)
+    val green = context.getColor(R.color.kb_blocker_q)
 }
 
 /** একটি কী। নিজে আঁকে, তাই হালকা ও দ্রুত। */
@@ -39,6 +42,8 @@ class KeyView(
     private val path = Path()
     private var down = false
     private var longFired = false
+    private var dynMode = false
+    private var dynHint: String? = null
     private val uiHandler = Handler(Looper.getMainLooper())
 
     private val bgPaint = Paint(Paint.ANTI_ALIAS_FLAG)
@@ -48,6 +53,14 @@ class KeyView(
         style = Paint.Style.STROKE
         strokeCap = Paint.Cap.ROUND
         strokeJoin = Paint.Join.ROUND
+    }
+
+    /** বাংলা মোডে শব্দ চলাকালীন: এই কী চাপলে যা আসবে তার ইঙ্গিত (null হলে কিছু দেখায় না) */
+    fun setDynamic(on: Boolean, hint: String?) {
+        if (dynMode == on && dynHint == hint) return
+        dynMode = on
+        dynHint = hint
+        invalidate()
     }
 
     private fun sp(v: Float) = TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_SP, v, resources.displayMetrics)
@@ -84,16 +97,22 @@ class KeyView(
         }
         canvas.drawRoundRect(bgRect, 7 * density, 7 * density, bgPaint)
 
-        val textColor = if (key.act == Act.ENTER) 0xFFFFFFFF.toInt()
-        else if (key.accent) colors.accent
-        else colors.text
+        val textColor = when {
+            key.act == Act.ENTER -> 0xFFFFFFFF.toInt()
+            key.tone == Tone.RED -> colors.red
+            key.tone == Tone.GREEN -> colors.green
+            key.accent -> colors.accent
+            else -> colors.text
+        }
 
         if (isIconKey()) {
             drawIcon(canvas, textColor)
             return
         }
 
+        val dyn = if (dynMode) dynHint else null
         val size = when {
+            dyn != null && key.act == Act.LETTER -> 19f
             key.act == Act.SPACE -> 13f
             key.act == Act.LETTER || key.act == Act.TEXT && key.label.length == 1 -> 22f
             key.act == Act.EMOJI -> 21f
@@ -102,13 +121,35 @@ class KeyView(
         }
         textPaint.textSize = sp(size)
         textPaint.color = if (key.act == Act.SPACE) colors.hint else textColor
-        val baseline = height / 2f - (textPaint.descent() + textPaint.ascent()) / 2f
+        val lower = if (dyn != null && key.act == Act.LETTER) 4 * density else 0f
+        val baseline = height / 2f - (textPaint.descent() + textPaint.ascent()) / 2f + lower
         canvas.drawText(key.label, width / 2f, baseline, textPaint)
 
-        key.hint?.let {
-            hintPaint.textSize = sp(10f)
-            hintPaint.color = colors.hint
-            canvas.drawText(it, bgRect.right - 4 * density, bgRect.top + sp(11.5f), hintPaint)
+        if (dynMode) {
+            // শব্দ চলাকালীন স্থির ইঙ্গিত লুকিয়ে, পরের কী-তে যা আসবে তা বড় করে দেখাই
+            dyn?.let {
+                var s = when {
+                    it.length <= 2 -> 13f
+                    it.length == 3 -> 11.5f
+                    else -> 10f
+                }
+                hintPaint.typeface = Typeface.DEFAULT_BOLD
+                hintPaint.color = colors.accent
+                hintPaint.textSize = sp(s)
+                val maxW = bgRect.width() - 5 * density
+                while (hintPaint.measureText(it) > maxW && s > 7f) {
+                    s -= 0.5f
+                    hintPaint.textSize = sp(s)
+                }
+                canvas.drawText(it, bgRect.right - 3 * density, bgRect.top + sp(s + 2.5f), hintPaint)
+                hintPaint.typeface = Typeface.DEFAULT
+            }
+        } else {
+            key.hint?.let {
+                hintPaint.textSize = sp(10f)
+                hintPaint.color = colors.hint
+                canvas.drawText(it, bgRect.right - 4 * density, bgRect.top + sp(11.5f), hintPaint)
+            }
         }
     }
 
