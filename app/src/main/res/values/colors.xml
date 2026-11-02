@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="kb_background">#E3E6EA</color>
+    <color name="kb_key">#FFFFFF</color>
+    <color name="kb_func_key">#CBD0D6</color>
+    <color name="kb_key_pressed">#B4BBC4</color>
+    <color name="kb_text">#1F2328</color>
+    <color name="kb_hint">#6B7280</color>
+    <color name="kb_accent">#1A73E8</color>
+</resources>

@@ -1,0 +1,154 @@
+package com.example.banglakeyboard
+
+import android.annotation.SuppressLint
+import android.content.Context
+import android.content.res.Configuration
+import android.util.TypedValue
+import android.view.View
+import android.widget.FrameLayout
+import android.widget.LinearLayout
+
+/**
+ * কিবোর্ডের মূল ভিউ। অক্ষরের সারি + ইমোজি প্যানেল ধরে রাখে।
+ * লজিক (কী চাপলে কী হবে) [Listener] এর মাধ্যমে সার্ভিসে যায়।
+ */
+@SuppressLint("ViewConstructor")
+class KeyboardRoot(
+    context: Context,
+    private val listener: Listener,
+) : FrameLayout(context), EmojiPanel.Listener {
+
+    interface Listener {
+        fun onLetter(ch: Char)
+        fun onCompose(text: String)
+        fun onText(text: String)
+        fun onSpace()
+        fun onBackspace()
+        fun onEnter()
+        fun onShift()
+        fun onToggleLanguage()
+        fun onLanguagePicker()
+        fun onEmojiPicked(emoji: String)
+    }
+
+    private val colors = KeyColors(context)
+    private val density = resources.displayMetrics.density
+    private val keyHeightPx: Int
+    private val rowsContainer = LinearLayout(context)
+    private val emojiPanel: EmojiPanel
+
+    private var layer = Layer.LETTERS
+    private var bangla = true
+    private var shift = ShiftState.OFF
+    private var enterLabel = KeyView.ENTER_ICON
+    private var emojiShown = false
+
+    init {
+        val landscape = resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
+        keyHeightPx = TypedValue.applyDimension(
+            TypedValue.COMPLEX_UNIT_DIP, if (landscape) 42f else 52f, resources.displayMetrics
+        ).toInt()
+        val totalHeight = keyHeightPx * 5 + (6 * density).toInt()
+
+        setBackgroundColor(colors.background)
+        rowsContainer.orientation = LinearLayout.VERTICAL
+        rowsContainer.setPadding(
+            (3 * density).toInt(), (3 * density).toInt(), (3 * density).toInt(), (3 * density).toInt()
+        )
+        addView(rowsContainer, LayoutParams(LayoutParams.MATCH_PARENT, totalHeight))
+
+        emojiPanel = EmojiPanel(context, colors, keyHeightPx, this)
+        emojiPanel.visibility = View.GONE
+        addView(emojiPanel, LayoutParams(LayoutParams.MATCH_PARENT, totalHeight))
+
+        layoutParams = LayoutParams(LayoutParams.MATCH_PARENT, totalHeight)
+        rebuild()
+    }
+
+    // ---------- সার্ভিস থেকে অবস্থা পরিবর্তন ----------
+
+    fun setLanguage(bangla: Boolean) {
+        if (this.bangla == bangla) return
+        this.bangla = bangla
+        emojiPanel.setLanguage(bangla)
+        rebuild()
+    }
+
+    fun setShift(state: ShiftState) {
+        if (shift == state) return
+        shift = state
+        rebuild()
+    }
+
+    fun setEnterLabel(label: String) {
+        if (enterLabel == label) return
+        enterLabel = label
+        rebuild()
+    }
+
+    /** নতুন ইনপুট ফিল্ডে ঢুকলে আবার অক্ষরের লেআউটে ফেরা */
+    fun resetToLetters() {
+        layer = Layer.LETTERS
+        hideEmoji()
+        rebuild()
+    }
+
+    fun showEmoji() {
+        emojiShown = true
+        emojiPanel.setLanguage(bangla)
+        emojiPanel.onShown()
+        rowsContainer.visibility = View.INVISIBLE
+        emojiPanel.visibility = View.VISIBLE
+    }
+
+    fun hideEmoji() {
+        emojiShown = false
+        emojiPanel.visibility = View.GONE
+        rowsContainer.visibility = View.VISIBLE
+    }
+
+    // ---------- সারি তৈরি ----------
+
+    private fun rebuild() {
+        rowsContainer.removeAllViews()
+        val rows = KeyboardLayouts.rows(layer, bangla, shift, enterLabel)
+        for (row in rows) {
+            val rowView = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL }
+            for (key in row) {
+                val longPress: ((Key) -> Unit)? =
+                    if (key.act == Act.LANG) { _ -> listener.onLanguagePicker() } else null
+                val view = KeyView(context, key, colors, ::handleKey, longPress)
+                rowView.addView(view, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.MATCH_PARENT, key.weight))
+            }
+            rowsContainer.addView(rowView, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, keyHeightPx))
+        }
+    }
+
+    private fun handleKey(key: Key) {
+        when (key.act) {
+            Act.LETTER -> listener.onLetter(key.text[0].lowercaseChar())
+            Act.COMPOSE -> listener.onCompose(key.text)
+            Act.TEXT -> listener.onText(key.text)
+            Act.SPACE -> listener.onSpace()
+            Act.BACKSPACE -> listener.onBackspace()
+            Act.ENTER -> listener.onEnter()
+            Act.SHIFT -> listener.onShift()
+            Act.LANG -> listener.onToggleLanguage()
+            Act.EMOJI -> showEmoji()
+            Act.TO_SYMBOLS -> { layer = Layer.SYMBOLS_1; rebuild() }
+            Act.TO_LETTERS -> { layer = Layer.LETTERS; rebuild() }
+            Act.SYMBOL_PAGE -> {
+                layer = if (layer == Layer.SYMBOLS_1) Layer.SYMBOLS_2 else Layer.SYMBOLS_1
+                rebuild()
+            }
+            Act.SPACER -> Unit
+        }
+    }
+
+    // ---------- EmojiPanel.Listener ----------
+
+    override fun onEmojiPicked(emoji: String) = listener.onEmojiPicked(emoji)
+    override fun onEmojiBackspace() = listener.onBackspace()
+    override fun onEmojiSpace() = listener.onSpace()
+    override fun onEmojiClose() = hideEmoji()
+}
