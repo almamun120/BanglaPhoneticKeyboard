@@ -12,5 +12,5 @@ dependencyResolutionManagement {
         mavenCentral()
     }
 }
-rootProject.name = "BanglaPhoneticKeyboard"
+rootProject.name = "PopyKeyboard"
 include(":app")

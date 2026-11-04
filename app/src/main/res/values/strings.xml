@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">বাংলা ফোনেটিক কিবোর্ড</string>
-    <string name="ime_name">বাংলা ফোনেটিক</string>
+    <string name="app_name">পপি কিবোর্ড</string>
+    <string name="ime_name">পপি কিবোর্ড</string>
     <string name="subtype_bn">বাংলা (ফোনেটিক)</string>
 </resources>
