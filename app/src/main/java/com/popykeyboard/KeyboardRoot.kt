@@ -45,6 +45,8 @@ class KeyboardRoot(
     private var enterLabel = KeyView.ENTER_ICON
     private var emojiShown = false
     private val letterViews = HashMap<Char, KeyView>()
+    // বাংলা অক্ষর-সারির ',' ও '।' কী (q চাপা থাকলে ! ও ? দেখায়)
+    private val punctViews = HashMap<Char, KeyView>()
     private var hints: Map<Char, BanglaPhonetic.Hint>? = null
 
     init {
@@ -96,6 +98,11 @@ class KeyboardRoot(
     private fun applyHints() {
         val m = hints
         for ((c, v) in letterViews) v.setDynamic(m != null, m?.get(c)?.text, m?.get(c)?.green == true)
+        // ',' ও '।' — ইঙ্গিত থাকলে (q সক্রিয়) সেটা, নইলে স্থির ইঙ্গিত
+        for ((c, v) in punctViews) {
+            val h = m?.get(c)
+            v.setDynamic(h != null, h?.text, h?.green == true)
+        }
     }
 
     fun setEnterLabel(label: String) {
@@ -130,6 +137,7 @@ class KeyboardRoot(
     private fun rebuild() {
         rowsContainer.removeAllViews()
         letterViews.clear()
+        punctViews.clear()
         val rows = KeyboardLayouts.rows(layer, bangla, shift, enterLabel)
         for (row in rows) {
             val rowView = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL }
@@ -141,6 +149,10 @@ class KeyboardRoot(
                 }
                 val view = KeyView(context, key, colors, ::handleKey, longPress)
                 if (key.act == Act.LETTER) letterViews[key.text[0].lowercaseChar()] = view
+                if (bangla && layer == Layer.LETTERS) {
+                    if (key.act == Act.COMPOSE && key.label == ",") punctViews[','] = view
+                    if (key.act == Act.TEXT && key.label == "।") punctViews['.'] = view
+                }
                 rowView.addView(view, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.MATCH_PARENT, key.weight))
             }
             rowsContainer.addView(rowView, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, keyHeightPx))

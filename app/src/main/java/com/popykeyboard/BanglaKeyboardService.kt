@@ -166,6 +166,7 @@ class BanglaKeyboardService : InputMethodService(), KeyboardRoot.Listener {
 
     override fun onLetter(ch: Char) {
         if (bangla) {
+            if (ch == 'q' && buffer.endsWith("qq")) return // q সর্বোচ্চ পরপর ২টি
             buffer.append(ch)
             updateComposing()
             if (shift == ShiftState.ON) { shift = ShiftState.OFF; root?.setShift(shift) }

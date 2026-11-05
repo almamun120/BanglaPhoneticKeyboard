@@ -139,6 +139,11 @@ object BanglaPhonetic {
                     vl--
                 }
                 if (qVowel) continue
+                // qn = ঞ (nnn-এর মতোই, যুক্ত হয়)। ব্যতিক্রম: ন/ণ-এর ঠিক পরে q ভাঙার চিহ্ন (ন্ন = nqn)
+                if (src.startsWith("qn", i) && !(consAfter && (lastConsTok == "n" || lastConsTok == "nn"))) {
+                    if (consAfter) out.append(HASANTA)
+                    out.append("ঞ"); consAfter = true; wordStart = false; lastConsTok = "nnn"; i += 2; continue
+                }
                 // qr = জোড়া ছাড়া র (ধর্ম = dhqrm)। ব্যতিক্রম: র-এর ঠিক পরে q ভাঙার চিহ্ন,
                 // তাই rqr = র্র (rr = ড় বলে সরাসরি লেখা যায় না)
                 if (src.startsWith("qr", i) && !(consAfter && lastConsTok == "r")) {
@@ -158,10 +163,6 @@ object BanglaPhonetic {
                     ) {
                         out.append("ৎ"); consAfter = false; wordStart = false; i += 2; continue
                     }
-                    // qn = ং (ng-এর মতোই)। ব্যতিক্রম: ন/ণ-এর ঠিক পরে q ভাঙার চিহ্ন (ন্ন = nqn)
-                    if (src.startsWith("qn", i) && lastConsTok != "n" && lastConsTok != "nn") {
-                        out.append("ং"); consAfter = false; wordStart = false; i += 2; continue
-                    }
                     // ব্যঞ্জনের পরে q = ভাঙার চিহ্ন, কিছু আসে না, যুক্তাক্ষর তবুও হয়
                     i += 1
                     if (i == src.length) pending = 'q'
@@ -170,7 +171,6 @@ object BanglaPhonetic {
                 // স্বরের পরে / শুরুতে: বিশেষ চিহ্ন
                 when {
                     src.startsWith("qt", i) -> { out.append("ৎ"); wordStart = false; i += 2; continue }
-                    src.startsWith("qn", i) -> { out.append("ং"); wordStart = false; i += 2; continue }
                     src.startsWith("qq", i) -> { out.append("ঁ"); wordStart = false; i += 2; continue }
                     src.startsWith("qk", i) -> { out.append("৳"); wordStart = false; i += 2; continue }
                 }
@@ -320,6 +320,11 @@ object BanglaPhonetic {
             if (h == null) continue
             val green = without != null && hintFor(without, c) != h
             res[c] = Hint(h, green)
+        }
+        // q সক্রিয় থাকলে ',' = !  এবং  '।' (.) = ?
+        if (qActive) {
+            res[','] = Hint("!", true)
+            res['.'] = Hint("?", true)
         }
         return res
     }

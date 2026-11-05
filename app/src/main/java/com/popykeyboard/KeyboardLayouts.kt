@@ -44,7 +44,7 @@ object KeyboardLayouts {
     private val hints = mapOf(
         'a' to "আ", 'b' to "ব", 'c' to "চ", 'd' to "দ", 'e' to "এ", 'f' to "ফ",
         'g' to "গ", 'h' to "হ", 'i' to "ই", 'j' to "জ", 'k' to "ক", 'l' to "ল",
-        'm' to "ম", 'n' to "ন", 'o' to "অ", 'p' to "প", 'q' to "ং", 'r' to "র",
+        'm' to "ম", 'n' to "ন", 'o' to "অ", 'p' to "প", 'q' to "ৎ ঁ ঃ", 'r' to "র",
         's' to "স", 't' to "ত", 'u' to "উ", 'v' to "ভ", 'w' to "ও", 'x' to "ক্ষ",
         'y' to "য়", 'z' to "য",
     )
