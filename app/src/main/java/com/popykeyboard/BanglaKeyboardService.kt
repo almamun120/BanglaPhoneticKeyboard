@@ -36,7 +36,6 @@ class BanglaKeyboardService : InputMethodService(), KeyboardRoot.Listener {
         appliedHeight = prefs.getInt("height_pct", 100)
         bangla = prefs.getBoolean("bangla", true)
         Feedback.prepare(this) // কী-চাপার শব্দ আগে থেকে লোড
-        applyJoinPrefs()
         val view = KeyboardRoot(this, this)
         view.setLanguage(bangla)
         root = view
@@ -50,18 +49,9 @@ class BanglaKeyboardService : InputMethodService(), KeyboardRoot.Listener {
         super.onDestroy()
     }
 
-    /** সেটিংসের "স্বয়ংক্রিয় যুক্তাক্ষর" পছন্দ ইঞ্জিনে পৌঁছে দেয় */
-    private fun applyJoinPrefs() {
-        BanglaPhonetic.configure(
-            prefs.getBoolean("auto_join", true),
-            prefs.getString("join_list", BanglaPhonetic.DEFAULT_JOIN_LIST) ?: BanglaPhonetic.DEFAULT_JOIN_LIST,
-        )
-    }
-
     override fun onStartInputView(info: EditorInfo, restarting: Boolean) {
         super.onStartInputView(info, restarting)
         buffer.clear()
-        applyJoinPrefs()
         // সেটিংসে উচ্চতা বদলালে কিবোর্ড নতুন করে বানাই
         if (root != null && prefs.getInt("height_pct", 100) != appliedHeight) {
             setInputView(onCreateInputView())
@@ -194,14 +184,21 @@ class BanglaKeyboardService : InputMethodService(), KeyboardRoot.Listener {
     /** ':' ও ',' — বাংলায় বাফারে যায় (:: = ঃ, ,, = হসন্ত) */
     override fun onCompose(text: String) {
         if (bangla) {
+            val afterQ = buffer.endsWith("q") && text == ","
             buffer.append(text)
-            updateComposing()
+            if (afterQ) commitComposing() else updateComposing() // q, = !
         } else {
             onText(text)
         }
     }
 
     override fun onText(text: String) {
+        if (bangla && text == "।" && buffer.endsWith("q")) { // q। = ?
+            buffer.append('.')
+            commitComposing()
+            refreshShift()
+            return
+        }
         commitComposing()
         currentInputConnection?.commitText(text, 1)
         refreshShift()
@@ -216,7 +213,11 @@ class BanglaKeyboardService : InputMethodService(), KeyboardRoot.Listener {
     override fun onBackspace() {
         val ic = currentInputConnection ?: return
         if (buffer.isNotEmpty()) {
-            buffer.deleteCharAt(buffer.length - 1)
+            // চোখে-না-পড়া অক্ষর (যেমন অদৃশ্য q) একসাথে মুছে যায়, যাতে প্রতি চাপে দৃশ্যমান পরিবর্তন হয়
+            val before = BanglaPhonetic.preview(buffer.toString()).text
+            do {
+                buffer.deleteCharAt(buffer.length - 1)
+            } while (buffer.isNotEmpty() && BanglaPhonetic.preview(buffer.toString()).text == before)
             if (buffer.isEmpty()) { ic.commitText("", 1); updateHints() } else updateComposing()
         } else {
             sendDownUpKeyEvents(KeyEvent.KEYCODE_DEL)

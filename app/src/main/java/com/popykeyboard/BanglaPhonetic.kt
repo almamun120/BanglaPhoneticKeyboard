@@ -49,26 +49,6 @@ object BanglaPhonetic {
 
     private fun isLetter(c: Char) = c in 'a'..'z'
 
-    // ----- স্বয়ংক্রিয় যুক্তাক্ষর (v1.5) -----
-    /** true = সব ব্যঞ্জন নিজে নিজে জোড়া লাগে (ডিফল্ট)। false = শুধু তালিকার জোড়া ও ফলা/রেফ নিজে লাগে; বাকিতে q দিয়ে লাগাতে হয়। */
-    @Volatile var autoJoin: Boolean = true
-
-    /** টাইপ-করা জোড়ার তালিকা, যেমন "nt" (ন্ত), "st" (স্ত); autoJoin বন্ধ থাকলে এগুলো নিজে জোড়া লাগে, q দিয়ে ভাঙে। */
-    @Volatile var joinList: Set<String> = emptySet()
-
-    /** প্রস্তাবিত তালিকা (সচরাচর ব্যবহৃত যুক্তাক্ষর) */
-    const val DEFAULT_JOIN_LIST =
-        "nt nd ndh nth st sth sk skh sp sn sm sf sph mp mph mb mv mm ml nk nj nc nch kt kk kkh kl km kn kz ndr tm tn tb lk lp lt ld ll lm gg gn gm gdh dg db dm dv bd bj bl cc cch jj jjh ttn pt pp pl pn ps nnt nnd"
-
-    /** স্পেস/নতুন লাইন/কমা দিয়ে আলাদা করা লেখা থেকে তালিকা বানায় */
-    fun parseJoinList(text: String): Set<String> =
-        text.lowercase().split(Regex("[\\s,;]+")).filter { it.isNotEmpty() && it.all { ch -> ch in 'a'..'z' } }.toSet()
-
-    fun configure(auto: Boolean, listText: String) {
-        autoJoin = auto
-        joinList = parseJoinList(listText)
-    }
-
     /** টাইপ চলাকালীন দেখানোর ফল। [markerIndex] >= 0 হলে ওই অবস্থানের অক্ষরটি রঙিন মার্কার ('o' লাল, 'q' সবুজ)। */
     class Preview(val text: String, val markerIndex: Int, val marker: Char)
 
@@ -100,8 +80,6 @@ object BanglaPhonetic {
         var qBreak = false
         // সর্বশেষ ব্যঞ্জন-টোকেন (যেমন "t", "nn") — q-এর অর্থ ঠিক করতে লাগে
         var lastConsTok = ""
-        // ব্যঞ্জনের পরে q এসেছে (autoJoin বন্ধ থাকলে এটাই যুক্ত করার চাবি / তালিকার জোড়ায় ভাঙার চাবি)
-        var qLink = false
         // শেষ টোকেনটি মার্কার-যোগ্য হলে: 'o' / 'q' (আউটপুটে অদৃশ্য), 'Q' (আউটপুটে আক্ষরিক q আছে)
         var pending = ' '
         var i = 0
@@ -112,8 +90,6 @@ object BanglaPhonetic {
             raInitial = false
             val wasQBreak = qBreak
             qBreak = false
-            val wasQLink = qLink
-            qLink = false
             pending = ' '
 
             // হসন্ত + ZWNJ  ( ,, )
@@ -128,6 +104,41 @@ object BanglaPhonetic {
                 if (src.startsWith("qw", i)) {
                     out.append("ঃ"); consAfter = false; wordStart = false; i += 2; continue
                 }
+                // q. = ?   q, = !
+                if (i + 1 < src.length && (src[i + 1] == '.' || src[i + 1] == ',')) {
+                    out.append(if (src[i + 1] == '.') '?' else '!')
+                    consAfter = false; wordStart = true; i += 2; continue
+                }
+                // qq = ঁ (চন্দ্রবিন্দু) — ব্যঞ্জনের পরেও (চঁআ = cqqa)
+                if (src.startsWith("qq", i)) {
+                    out.append("ঁ"); consAfter = false; wordStart = false; i += 2; continue
+                }
+                // স্বাধীন বর্ণ: qh = হ, qz = য (রেফ-য ছাড়া), qx = ক্স — জোড়া লাগে না
+                if (src.startsWith("qh", i)) {
+                    out.append("হ"); consAfter = true; wordStart = false; lastConsTok = "h"; i += 2; continue
+                }
+                if (src.startsWith("qz", i) && !(consAfter && endsWithPlainRa(out))) {
+                    out.append("য"); consAfter = true; wordStart = false; lastConsTok = "z"; i += 2; continue
+                }
+                if (src.startsWith("qx", i)) {
+                    out.append("ক").append(HASANTA).append("স")
+                    consAfter = true; wordStart = false; lastConsTok = "x"; i += 2; continue
+                }
+                // q + স্বর = স্বাধীন স্বর, ব্যঞ্জনের পরেও (qa = আ, qi = ই, qoo = ও)
+                var qVowel = false
+                var vl = minOf(2, src.length - i - 1)
+                while (vl >= 1) {
+                    val vt = src.substring(i + 1, i + 1 + vl)
+                    val vv = if (vt == "rrr") null else vowels[vt]
+                    if (vv != null) {
+                        out.append(vv.first)
+                        consAfter = false; wordStart = false; i += 1 + vl
+                        qVowel = true
+                        break
+                    }
+                    vl--
+                }
+                if (qVowel) continue
                 // qr = জোড়া ছাড়া র (ধর্ম = dhqrm)। ব্যতিক্রম: র-এর ঠিক পরে q ভাঙার চিহ্ন,
                 // তাই rqr = র্র (rr = ড় বলে সরাসরি লেখা যায় না)
                 if (src.startsWith("qr", i) && !(consAfter && lastConsTok == "r")) {
@@ -142,18 +153,17 @@ object BanglaPhonetic {
                     val after = if (i + 2 < src.length) src[i + 2] else ' '
                     // qt = ৎ ব্যঞ্জনের পরেও (জগৎ = jogqt)। ব্যতিক্রম: ত/ট-এর ঠিক পরে q ভাঙার চিহ্ন
                     // (ত্ত = tqt, ট্ট = ttqtt) এবং th/tt (ত্থ = tqth) আগের মতো
-                    if (autoJoin && src.startsWith("qt", i) && after != 'h' && after != 't' &&
+                    if (src.startsWith("qt", i) && after != 'h' && after != 't' &&
                         lastConsTok != "t" && lastConsTok != "tt"
                     ) {
                         out.append("ৎ"); consAfter = false; wordStart = false; i += 2; continue
                     }
                     // qn = ং (ng-এর মতোই)। ব্যতিক্রম: ন/ণ-এর ঠিক পরে q ভাঙার চিহ্ন (ন্ন = nqn)
-                    if (autoJoin && src.startsWith("qn", i) && lastConsTok != "n" && lastConsTok != "nn") {
+                    if (src.startsWith("qn", i) && lastConsTok != "n" && lastConsTok != "nn") {
                         out.append("ং"); consAfter = false; wordStart = false; i += 2; continue
                     }
                     // ব্যঞ্জনের পরে q = ভাঙার চিহ্ন, কিছু আসে না, যুক্তাক্ষর তবুও হয়
                     i += 1
-                    qLink = true
                     if (i == src.length) pending = 'q'
                     continue
                 }
@@ -211,16 +221,7 @@ object BanglaPhonetic {
                         out.append(ZWJ).append(HASANTA).append(cons)
                     } else {
                         // b সবসময় স্বাধীন ব; যুক্ত হয় না (ব-ফলা = w)
-                        if (consAfter && tok != "b") {
-                            val listed = (lastConsTok + tok) in joinList
-                            val join = when {
-                                tok == "r" || tok == "z" || lastConsTok == "r" -> true // ফলা ও রেফ সবসময় স্বয়ংক্রিয়
-                                autoJoin -> true
-                                wasQLink -> !listed   // q: তালিকার জোড়ায় ভাঙে, বাকিতে লাগায়
-                                else -> listed
-                            }
-                            if (join) out.append(HASANTA)
-                        }
+                        if (consAfter && tok != "b") out.append(HASANTA)
                         out.append(cons)
                     }
                     raInitial = tok == "r" && startsWord

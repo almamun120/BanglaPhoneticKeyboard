@@ -135,10 +135,10 @@ object KeyboardLayouts {
                     listOf(
                         Key("?123", Act.TO_SYMBOLS, weight = 1.3f, func = true),
                         lang,
-                        emoji,
                         // বাংলায় ',' কী দুইবার = হসন্ত (,,)
                         Key(",", if (bangla) Act.COMPOSE else Act.TEXT, hint = if (bangla) "্" else null, weight = 0.9f),
                         space,
+                        emoji,
                         Key(if (bangla) "।" else ".", Act.TEXT, weight = 0.9f),
                         enter,
                     )
@@ -158,9 +158,9 @@ object KeyboardLayouts {
                     listOf(
                         Key(if (bangla) "কখ" else "ABC", Act.TO_LETTERS, weight = 1.3f, func = true),
                         lang,
-                        emoji,
                         Key(",", Act.TEXT, weight = 0.9f),
                         space,
+                        emoji,
                         Key(".", Act.TEXT, weight = 0.9f),
                         enter,
                     )
