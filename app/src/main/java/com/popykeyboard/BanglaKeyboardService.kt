@@ -36,6 +36,7 @@ class BanglaKeyboardService : InputMethodService(), KeyboardRoot.Listener {
         appliedHeight = prefs.getInt("height_pct", 100)
         bangla = prefs.getBoolean("bangla", true)
         Feedback.prepare(this) // কী-চাপার শব্দ আগে থেকে লোড
+        applyJoinPrefs()
         val view = KeyboardRoot(this, this)
         view.setLanguage(bangla)
         root = view
@@ -49,9 +50,18 @@ class BanglaKeyboardService : InputMethodService(), KeyboardRoot.Listener {
         super.onDestroy()
     }
 
+    /** সেটিংসের "স্বয়ংক্রিয় যুক্তাক্ষর" পছন্দ ইঞ্জিনে পৌঁছে দেয় */
+    private fun applyJoinPrefs() {
+        BanglaPhonetic.configure(
+            prefs.getBoolean("auto_join", true),
+            prefs.getString("join_list", BanglaPhonetic.DEFAULT_JOIN_LIST) ?: BanglaPhonetic.DEFAULT_JOIN_LIST,
+        )
+    }
+
     override fun onStartInputView(info: EditorInfo, restarting: Boolean) {
         super.onStartInputView(info, restarting)
         buffer.clear()
+        applyJoinPrefs()
         // সেটিংসে উচ্চতা বদলালে কিবোর্ড নতুন করে বানাই
         if (root != null && prefs.getInt("height_pct", 100) != appliedHeight) {
             setInputView(onCreateInputView())

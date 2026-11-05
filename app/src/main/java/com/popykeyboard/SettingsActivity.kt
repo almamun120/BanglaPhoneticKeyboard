@@ -160,15 +160,53 @@ class SettingsActivity : Activity() {
             preview = { Feedback.previewVibration(this) },
         )
 
+        // ---- স্বয়ংক্রিয় যুক্তাক্ষর ----
+        column.addView(title("স্বয়ংক্রিয় যুক্তাক্ষর"))
+        val joinText = EditText(this).apply {
+            setText(prefs.getString("join_list", BanglaPhonetic.DEFAULT_JOIN_LIST))
+            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_MULTI_LINE or
+                InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
+            minLines = 3
+            gravity = Gravity.TOP
+            isEnabled = !prefs.getBoolean("auto_join", true)
+            addTextChangedListener(object : android.text.TextWatcher {
+                override fun afterTextChanged(s: android.text.Editable?) {
+                    prefs.edit().putString("join_list", s?.toString() ?: "").apply()
+                }
+                override fun beforeTextChanged(s: CharSequence?, st: Int, c: Int, a: Int) {}
+                override fun onTextChanged(s: CharSequence?, st: Int, b: Int, c: Int) {}
+            })
+        }
+        column.addView(Switch(this).apply {
+            text = "ব্যঞ্জন নিজে নিজে জোড়া লাগুক"
+            isChecked = prefs.getBoolean("auto_join", true)
+            setOnCheckedChangeListener { _, on ->
+                prefs.edit().putBoolean("auto_join", on).apply()
+                joinText.isEnabled = !on
+            }
+        })
+        column.addView(body(
+            "চালু (ডিফল্ট): kt = ক্ত, nt = ন্ত — সব জোড়া নিজে লাগে।\n" +
+                "বন্ধ: শুধু নিচের তালিকার জোড়া নিজে লাগে (র-ফলা, য-ফলা, ব-ফলা ও রেফ সবসময় নিজে); বাকিগুলো q দিয়ে লাগাতে হয়: kqt = ক্ত। " +
+                "তালিকার জোড়া ভাঙতে q: nqto = নত। বন্ধ থাকলে ব্যঞ্জনের পর qt / qn যুক্ত করার কাজ করে; ৎ লিখতে স্বরের পর qt (jogoqt), ং এর জন্য ng।"
+        ))
+        column.addView(body("তালিকা (টাইপ করার ধরনে, স্পেস দিয়ে আলাদা; শুধু বন্ধ অবস্থায় কাজ করে):"))
+        column.addView(joinText, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+        column.addView(Button(this).apply {
+            text = "প্রস্তাবিত তালিকা ফিরিয়ে আনুন"
+            setOnClickListener { joinText.setText(BanglaPhonetic.DEFAULT_JOIN_LIST) }
+        })
+
         column.addView(title("বাটনগুলো"))
         column.addView(body(
             "• বাং / EN — বাংলা ও ইংরেজির মধ্যে বদল (চেপে ধরলে কিবোর্ড বদলানোর মেনু)\n" +
                 "• 😊 — ইমোজি প্যানেল (সাম্প্রতিক ইমোজি আগে দেখায়)\n" +
                 "• শিফট (⇧) বাংলায় শুধু কী-র ইংরেজি হরফ বড়/ছোট দেখায়; টাইপিংয়ে কোনো প্রভাব নেই\n" +
-                "• বাংলা মোডে ',' দুইবার = হসন্ত;  qw = ঃ;  ng = ং;  nnn = ঞ;  nng = ঙ\n" +
+                "• বাংলা মোডে ',' দুইবার = হসন্ত;  qw = ঃ;  ng / qn = ং;  nnn = ঞ;  nng = ঙ\n" +
                 "• b = শুধু স্বাধীন ব (যুক্ত হয় না);  w = ব্যঞ্জনের পর ব-ফলা, শুরুতে/স্বরের পর ও\n" +
                 "• লাল o = যুক্তাক্ষরে বাধা (ব্যঞ্জনের পর দেখা যায়, পরের অক্ষর এলে সরে যায়)\n" +
                 "• সবুজ q = ভাঙার চিহ্ন (একইভাবে মার্কার দেখায়); q সক্রিয় থাকলে যেসব কী-র ফল বদলায় তাদের ইঙ্গিত সবুজ\n" +
+                "• স্বয়ংক্রিয় যুক্তাক্ষর বন্ধ থাকলে: ব্যঞ্জন আলাদা, যুক্ত করতে q (kqt = ক্ত); তালিকার জোড়া নিজে লাগে, q দিলে ভাঙে\n" +
                 "• স্বরবর্ণে য-ফলা: oza = অ্যা (ভাঙতে q: oqzotha = অযথা)\n" +
                 "• শব্দ লেখার সময় কী-গুলোর গায়ে নীল ইঙ্গিত দেখায়: এরপর কোন কী চাপলে কী আসবে (কার, ফলা, খ/ঘ/ছ ইত্যাদিও)\n" +
                 "• র‍্য: শব্দের শুরুতে rz, অন্য জায়গায় rqz (রেফ-য হলে শুধু rz: কার্য = karz)"
@@ -190,7 +228,7 @@ class SettingsActivity : Activity() {
                 "dhorm → ধর্ম     durga → দুর্গা     bidza → বিদ্যা\n" +
                 "jnnnan → জ্ঞান     xoma → ক্ষমা     rrrsssi → ঋষি\n" +
                 "ghorri → ঘড়ি     duqwkh → দুঃখ     swopn → স্বপ্ন\n\n" +
-                "q = ভাঙার চিহ্ন;  ng = ং,  nnn = ঞ,  nng = ঙ,  qt = ৎ,  qq = ঁ,  qk = ৳,  qw = ঃ"
+                "q = ভাঙার চিহ্ন;  ng / qn = ং,  nnn = ঞ,  nng = ঙ,  qt = ৎ (সব জায়গায়),  qq = ঁ,  qk = ৳,  qw = ঃ"
         ))
 
         setContentView(ScrollView(this).apply { addView(column) })

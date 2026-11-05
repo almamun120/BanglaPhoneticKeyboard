@@ -11,8 +11,8 @@ android {
         applicationId = "com.popykeyboard"
         minSdk = 24
         targetSdk = 34
-        versionCode = (System.getenv("VERSION_CODE") ?: "1").toInt()
-        versionName = System.getenv("VERSION_NAME") ?: "1.0"
+        versionCode = (System.getenv("VERSION_CODE") ?: "15").toInt()
+        versionName = System.getenv("VERSION_NAME") ?: "1.5"
     }
 
     // Release সাইনিং: এনভায়রনমেন্ট ভেরিয়েবল (GitHub Secrets) থেকে পড়া হয়।
