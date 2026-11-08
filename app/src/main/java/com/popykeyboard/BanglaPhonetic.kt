@@ -144,10 +144,16 @@ object BanglaPhonetic {
                     if (consAfter) out.append(HASANTA)
                     out.append("ঞ"); consAfter = true; wordStart = false; lastConsTok = "nnn"; i += 2; continue
                 }
-                // qr = জোড়া ছাড়া র (ধর্ম = dhqrm)। ব্যতিক্রম: র-এর ঠিক পরে q ভাঙার চিহ্ন,
-                // তাই rqr = র্র (rr = ড় বলে সরাসরি লেখা যায় না)
+                // qs = ষ (sss-এর মতোই, যুক্ত হয়)। ব্যতিক্রম: স/শ-এর ঠিক পরে q ভাঙার চিহ্ন (স্স = sqs, শ্শ = ssqss)
+                if (src.startsWith("qs", i) && !(consAfter && (lastConsTok == "s" || lastConsTok == "ss"))) {
+                    if (consAfter) out.append(HASANTA)
+                    out.append("ষ"); consAfter = true; wordStart = false; lastConsTok = "sss"; i += 2; continue
+                }
+                // qr = ঋ (শুরুতে/স্বরের পরে) বা ৃ (ব্যঞ্জনের পরে) — rrr-এর মতোই।
+                // ব্যতিক্রম: র-এর ঠিক পরে q ভাঙার চিহ্ন, তাই rqr = র্র (rr = ড় বলে সরাসরি লেখা যায় না)
                 if (src.startsWith("qr", i) && !(consAfter && lastConsTok == "r")) {
-                    out.append("র"); consAfter = true; wordStart = false; lastConsTok = "r"; i += 2; continue
+                    out.append(if (consAfter) "ৃ" else "ঋ")
+                    consAfter = false; wordStart = false; i += 2; continue
                 }
                 if (consAfter) {
                     // rqz = র‍্য (র-এর সাথে য-ফলা, রেফ নয়)
@@ -221,7 +227,8 @@ object BanglaPhonetic {
                         out.append(ZWJ).append(HASANTA).append(cons)
                     } else {
                         // b সবসময় স্বাধীন ব; যুক্ত হয় না (ব-ফলা = w)
-                        if (consAfter && tok != "b") out.append(HASANTA)
+                        // y (য়) আগে-পরে কোনো ব্যঞ্জনের সাথে জোড়া লাগে না, b-এর মতোই স্বাধীন
+                        if (consAfter && tok != "b" && tok != "y" && lastConsTok != "y") out.append(HASANTA)
                         out.append(cons)
                     }
                     raInitial = tok == "r" && startsWord

@@ -3,10 +3,13 @@ package com.popykeyboard
 import android.annotation.SuppressLint
 import android.content.Context
 import android.content.res.Configuration
+import android.graphics.drawable.GradientDrawable
 import android.util.TypedValue
+import android.view.Gravity
 import android.view.View
 import android.widget.FrameLayout
 import android.widget.LinearLayout
+import android.widget.TextView
 
 /**
  * কিবোর্ডের মূল ভিউ। অক্ষরের সারি + ইমোজি প্যানেল ধরে রাখে।
@@ -45,6 +48,8 @@ class KeyboardRoot(
     private var enterLabel = KeyView.ENTER_ICON
     private var emojiShown = false
     private val letterViews = HashMap<Char, KeyView>()
+    // নম্বর সারির ওপরে ইংরেজি অক্ষরের প্রিভিউ (সেটিংসে চালু করলে)
+    private var previewText: TextView? = null
     // বাংলা অক্ষর-সারির ',' ও '।' কী (q চাপা থাকলে ! ও ? দেখায়)
     private val punctViews = HashMap<Char, KeyView>()
     private var hints: Map<Char, BanglaPhonetic.Hint>? = null
@@ -57,18 +62,45 @@ class KeyboardRoot(
         keyHeightPx = TypedValue.applyDimension(
             TypedValue.COMPLEX_UNIT_DIP, (if (landscape) 42f else 52f) * pct / 100f, resources.displayMetrics
         ).toInt()
-        val totalHeight = keyHeightPx * 5 + (6 * density).toInt()
+        val baseHeight = keyHeightPx * 5 + (6 * density).toInt()
+        val previewOn = context.getSharedPreferences("keyboard", Context.MODE_PRIVATE)
+            .getBoolean(PREF_PREVIEW, false)
+        val stripPx = if (previewOn) (34 * density).toInt() else 0
+        val totalHeight = baseHeight + stripPx
 
         setBackgroundColor(colors.background)
         rowsContainer.orientation = LinearLayout.VERTICAL
         rowsContainer.setPadding(
             (3 * density).toInt(), (3 * density).toInt(), (3 * density).toInt(), (3 * density).toInt()
         )
-        addView(rowsContainer, LayoutParams(LayoutParams.MATCH_PARENT, totalHeight))
+        addView(rowsContainer, LayoutParams(LayoutParams.MATCH_PARENT, baseHeight).apply { topMargin = stripPx })
 
         emojiPanel = EmojiPanel(context, colors, keyHeightPx, this)
         emojiPanel.visibility = View.GONE
-        addView(emojiPanel, LayoutParams(LayoutParams.MATCH_PARENT, totalHeight))
+        addView(emojiPanel, LayoutParams(LayoutParams.MATCH_PARENT, baseHeight).apply { topMargin = stripPx })
+
+        if (previewOn) {
+            val pillColor = colors.key
+            val pillText = colors.text
+            val pillBg = GradientDrawable()
+            pillBg.cornerRadius = 14 * density
+            pillBg.setColor(pillColor)
+            val tv = TextView(context)
+            tv.setTextColor(pillText)
+            tv.textSize = 16f
+            tv.typeface = android.graphics.Typeface.MONOSPACE
+            tv.gravity = Gravity.CENTER
+            tv.setPadding((16 * density).toInt(), 0, (16 * density).toInt(), 0)
+            tv.background = pillBg
+            tv.visibility = View.INVISIBLE
+            tv.minWidth = (48 * density).toInt()
+            addView(
+                tv,
+                LayoutParams(LayoutParams.WRAP_CONTENT, (28 * density).toInt(), Gravity.CENTER_HORIZONTAL or Gravity.TOP)
+                    .apply { topMargin = (3 * density).toInt() },
+            )
+            previewText = tv
+        }
 
         layoutParams = LayoutParams(LayoutParams.MATCH_PARENT, totalHeight)
         rebuild()
@@ -103,6 +135,13 @@ class KeyboardRoot(
             val h = m?.get(c)
             v.setDynamic(h != null, h?.text, h?.green == true)
         }
+    }
+
+    /** চলমান শব্দের ইংরেজি অক্ষর (প্রিভিউ প্যানেল চালু থাকলে); ফাঁকা হলে প্যানেল লুকায় */
+    fun setTyped(text: String) {
+        val tv = previewText ?: return
+        tv.text = text
+        tv.visibility = if (text.isEmpty()) View.INVISIBLE else View.VISIBLE
     }
 
     fun setEnterLabel(label: String) {
@@ -187,4 +226,8 @@ class KeyboardRoot(
     override fun onEmojiBackspace() = listener.onBackspace()
     override fun onEmojiSpace() = listener.onSpace()
     override fun onEmojiClose() = hideEmoji()
+
+    companion object {
+        const val PREF_PREVIEW = "preview_panel"
+    }
 }

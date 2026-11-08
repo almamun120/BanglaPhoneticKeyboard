@@ -12,7 +12,7 @@ import android.os.Vibrator
  * কী চাপার শব্দ ও কম্পন। সেটিংসের পছন্দ ("keyboard" SharedPreferences) প্রতিবার পড়া হয়,
  * তাই সেটিংসে বদলালে সঙ্গে সঙ্গে কাজ করে।
  *
- *  - শব্দ: কী-র ধরন অনুযায়ী ৪টি আলাদা ক্লিক (সাধারণ, স্পেস, মোছা, এন্টার)।
+ *  - শব্দ: বাছাই-করা থিমের ৪টি আলাদা আওয়াজ (সাধারণ, স্পেস, মোছা, এন্টার)।
  *    ফোন সাইলেন্ট/ভাইব্রেট মোডে থাকলে শব্দ বাজে না।
  *  - কম্পন: মাত্রা ১–১০০; অ্যামপ্লিচিউড-নিয়ন্ত্রণ থাকলে জোর বদলায়, না থাকলে সময় বদলায়।
  */
@@ -24,6 +24,22 @@ object Feedback {
     const val KEY_VIBRATE_ON = "vibrate_on"
     const val KEY_VIBRATE_LEVEL = "vibrate_level"
 
+    const val KEY_SOUND_THEME = "sound_theme"
+    const val DEFAULT_THEME = "classic"
+
+    /** একটি সাউন্ড থিম: id, বাংলা নাম, [সাধারণ, স্পেস, মোছা, এন্টার] এর raw রিসোর্স */
+    class Theme(val id: String, val label: String, val res: IntArray)
+
+    val THEMES: List<Theme> = listOf(
+        Theme("classic", "ক্লিক (সাধারণ)", intArrayOf(R.raw.key_classic_standard, R.raw.key_classic_space, R.raw.key_classic_delete, R.raw.key_classic_enter)),
+        Theme("typewriter", "টাইপরাইটার", intArrayOf(R.raw.key_typewriter_standard, R.raw.key_typewriter_space, R.raw.key_typewriter_delete, R.raw.key_typewriter_enter)),
+        Theme("mechanical", "মেকানিক্যাল কিবোর্ড", intArrayOf(R.raw.key_mechanical_standard, R.raw.key_mechanical_space, R.raw.key_mechanical_delete, R.raw.key_mechanical_enter)),
+        Theme("bubble", "বাবল পপ", intArrayOf(R.raw.key_bubble_standard, R.raw.key_bubble_space, R.raw.key_bubble_delete, R.raw.key_bubble_enter)),
+        Theme("drop", "পানির ফোঁটা", intArrayOf(R.raw.key_drop_standard, R.raw.key_drop_space, R.raw.key_drop_delete, R.raw.key_drop_enter)),
+        Theme("wood", "কাঠের টোকা", intArrayOf(R.raw.key_wood_standard, R.raw.key_wood_space, R.raw.key_wood_delete, R.raw.key_wood_enter)),
+        Theme("retro", "রেট্রো বিপ", intArrayOf(R.raw.key_retro_standard, R.raw.key_retro_space, R.raw.key_retro_delete, R.raw.key_retro_enter)),
+    )
+
     const val DEFAULT_SOUND_VOL = 60
     const val DEFAULT_VIBRATE_LEVEL = 50
 
@@ -31,10 +47,15 @@ object Feedback {
 
     private var pool: SoundPool? = null
     private val ids = IntArray(Snd.values().size)
+    private var loadedTheme: String? = null
 
     private fun prefs(ctx: Context) =
         ctx.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
 
+    fun soundTheme(ctx: Context): String {
+        val id = prefs(ctx).getString(KEY_SOUND_THEME, DEFAULT_THEME) ?: DEFAULT_THEME
+        return if (THEMES.any { it.id == id }) id else DEFAULT_THEME
+    }
     fun soundOn(ctx: Context) = prefs(ctx).getBoolean(KEY_SOUND_ON, true)
     fun soundVolume(ctx: Context) = prefs(ctx).getInt(KEY_SOUND_VOL, DEFAULT_SOUND_VOL).coerceIn(1, 100)
     fun vibrateOn(ctx: Context) = prefs(ctx).getBoolean(KEY_VIBRATE_ON, true)
@@ -42,23 +63,26 @@ object Feedback {
 
     /** কিবোর্ড তৈরির সময় ডাকলে শব্দ আগে থেকে লোড থাকে, প্রথম চাপেই বাজে */
     fun prepare(ctx: Context) {
-        if (pool != null) return
+        val theme = soundTheme(ctx)
+        if (pool != null && loadedTheme == theme) return
+        pool?.release()
+        pool = null
         val attrs = AudioAttributes.Builder()
             .setUsage(AudioAttributes.USAGE_ASSISTANCE_SONIFICATION)
             .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
             .build()
         val p = SoundPool.Builder().setMaxStreams(4).setAudioAttributes(attrs).build()
         val app = ctx.applicationContext
-        ids[Snd.STANDARD.ordinal] = p.load(app, R.raw.key_standard, 1)
-        ids[Snd.SPACE.ordinal] = p.load(app, R.raw.key_space, 1)
-        ids[Snd.DELETE.ordinal] = p.load(app, R.raw.key_delete, 1)
-        ids[Snd.ENTER.ordinal] = p.load(app, R.raw.key_enter, 1)
+        val res = THEMES.first { it.id == theme }.res
+        for (snd in Snd.values()) ids[snd.ordinal] = p.load(app, res[snd.ordinal], 1)
+        loadedTheme = theme
         pool = p
     }
 
     fun release() {
         pool?.release()
         pool = null
+        loadedTheme = null
     }
 
     /** একটি কী চাপা হলে: কম্পন + শব্দ */
@@ -80,6 +104,11 @@ object Feedback {
 
     /** সেটিংস স্ক্রিনে স্লাইডার ছাড়লে নমুনা */
     fun previewSound(ctx: Context) = play(ctx, Snd.STANDARD)
+    /** থিম বদলের পর: নতুন শব্দ লোড হতে একটু সময় লাগে, তাই কিছু পরে বাজাই */
+    fun previewTheme(ctx: Context) {
+        prepare(ctx)
+        android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({ play(ctx, Snd.STANDARD) }, 350)
+    }
     fun previewVibration(ctx: Context) = vibrate(ctx, 1f)
 
     private fun play(ctx: Context, snd: Snd) {

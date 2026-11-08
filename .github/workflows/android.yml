@@ -42,11 +42,18 @@ jobs:
           path: app/build/outputs/apk/debug/*.apk
           if-no-files-found: error
 
-  # ---------- রিলিজ: v* ট্যাগে (বা হাতে চালালে) সাইন্ড APK ----------
+  # ---------- সাইন্ড রিলিজ ----------
+  # • v* ট্যাগ        → স্থায়ী GitHub Release (PopyKeyboard-<ভার্সন>.apk)
+  # • main/master push → "latest" প্রি-রিলিজ আপডেট (প্রতিবার নতুন সাইন্ড APK)
+  # • হাতে Run workflow → APK শুধু Artifacts-এ (main হলে latest-ও আপডেট)
+  # Secret না থাকলেও চলে: প্রজেক্টের ভেতরের কী দিয়ে সাইন হয়।
   release:
     needs: debug
-    if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
+    env:
+      IS_TAG: ${{ startsWith(github.ref, 'refs/tags/v') }}
+      IS_MAIN: ${{ github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master' }}
     steps:
       - uses: actions/checkout@v4
 
@@ -59,36 +66,46 @@ jobs:
         with:
           gradle-version: 8.7
 
-      - name: Check signing secrets
+      # secret সেট থাকলে সেই কী দিয়ে সাইন; না থাকলে প্রজেক্টের ভেতরের কী (signing/popy-release.jks) দিয়ে সাইন।
+      # দুই ক্ষেত্রেই কিছু করতে হয় না। নিজের গোপন কী চাইলে README-র "নিজের কী" অংশ দেখুন।
+      - name: Prepare signing key
         env:
           KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+          S_STOREPASS: ${{ secrets.KEYSTORE_PASSWORD }}
+          S_ALIAS: ${{ secrets.KEY_ALIAS }}
+          S_KEYPASS: ${{ secrets.KEY_PASSWORD }}
         run: |
-          if [ -z "$KEYSTORE_BASE64" ]; then
-            echo "::error::KEYSTORE_BASE64 secret সেট করা নেই। README-র 'সাইন্ড রিলিজ' অংশ দেখুন।"
-            exit 1
+          if [ -n "$KEYSTORE_BASE64" ] && [ -n "$S_STOREPASS" ] && [ -n "$S_ALIAS" ] && [ -n "$S_KEYPASS" ]; then
+            echo "$KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/release.jks"
+            {
+              echo "KEYSTORE_PATH=$RUNNER_TEMP/release.jks"
+              echo "KEYSTORE_PASSWORD=$S_STOREPASS"
+              echo "KEY_ALIAS=$S_ALIAS"
+              echo "KEY_PASSWORD=$S_KEYPASS"
+            } >> "$GITHUB_ENV"
+            echo "ব্যক্তিগত secret-কী দিয়ে সাইন করা হবে।"
+          else
+            {
+              echo "KEYSTORE_PATH=$GITHUB_WORKSPACE/signing/popy-release.jks"
+              echo "KEYSTORE_PASSWORD=popykeyboard"
+              echo "KEY_ALIAS=popy"
+              echo "KEY_PASSWORD=popykeyboard"
+            } >> "$GITHUB_ENV"
+            echo "::notice::secret সেট নেই, প্রজেক্টের ভেতরের কী (signing/popy-release.jks) দিয়ে সাইন করা হচ্ছে।"
           fi
-
-      - name: Decode keystore
-        env:
-          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
-        run: |
-          echo "$KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/release.jks"
-          echo "KEYSTORE_PATH=$RUNNER_TEMP/release.jks" >> "$GITHUB_ENV"
 
       - name: Set version
         run: |
-          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+          if [ "$IS_TAG" = "true" ]; then
             echo "VERSION_NAME=${GITHUB_REF_NAME#v}" >> "$GITHUB_ENV"
+            echo "APK_NAME=PopyKeyboard-${GITHUB_REF_NAME#v}.apk" >> "$GITHUB_ENV"
           else
-            echo "VERSION_NAME=0.0.${GITHUB_RUN_NUMBER}" >> "$GITHUB_ENV"
+            echo "VERSION_NAME=dev-${GITHUB_RUN_NUMBER}" >> "$GITHUB_ENV"
+            echo "APK_NAME=PopyKeyboard-latest.apk" >> "$GITHUB_ENV"
           fi
           echo "VERSION_CODE=${GITHUB_RUN_NUMBER}" >> "$GITHUB_ENV"
 
       - name: Build signed release APK
-        env:
-          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
-          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
-          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
         run: gradle assembleRelease --stacktrace
 
       - name: Verify signature
@@ -99,17 +116,34 @@ jobs:
       - name: Name the APK
         run: |
           mkdir -p dist
-          cp app/build/outputs/apk/release/*.apk "dist/PopyKeyboard-${VERSION_NAME}.apk"
+          cp app/build/outputs/apk/release/*.apk "dist/${APK_NAME}"
 
       - uses: actions/upload-artifact@v4
         with:
-          name: bangla-keyboard-release
+          name: popy-keyboard-release
           path: dist/*.apk
           if-no-files-found: error
 
-      - name: Publish GitHub Release
-        if: startsWith(github.ref, 'refs/tags/v')
+      - name: Publish GitHub Release (tag)
+        if: env.IS_TAG == 'true'
         uses: softprops/action-gh-release@v2
         with:
           files: dist/*.apk
           generate_release_notes: true
+
+      - name: Move "latest" tag
+        if: env.IS_MAIN == 'true'
+        run: |
+          git tag -f latest
+          git push -f origin latest
+
+      - name: Publish "latest" pre-release
+        if: env.IS_MAIN == 'true'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: latest
+          name: "সর্বশেষ বিল্ড (latest)"
+          body: "main শাখার সর্বশেষ কমিটের সাইন্ড APK (স্বয়ংক্রিয়ভাবে আপডেট হয়)। স্থায়ী সংস্করণের জন্য নিচের নম্বরওয়ালা রিলিজ দেখুন।"
+          prerelease: true
+          make_latest: "false"
+          files: dist/*.apk

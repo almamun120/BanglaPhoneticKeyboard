@@ -31,9 +31,11 @@ class BanglaKeyboardService : InputMethodService(), KeyboardRoot.Listener {
     private val prefs by lazy { getSharedPreferences("keyboard", MODE_PRIVATE) }
 
     private var appliedHeight = 100
+    private var appliedPreview = false
 
     override fun onCreateInputView(): View {
         appliedHeight = prefs.getInt("height_pct", 100)
+        appliedPreview = prefs.getBoolean(KeyboardRoot.PREF_PREVIEW, false)
         bangla = prefs.getBoolean("bangla", true)
         Feedback.prepare(this) // কী-চাপার শব্দ আগে থেকে লোড
         val view = KeyboardRoot(this, this)
@@ -53,7 +55,9 @@ class BanglaKeyboardService : InputMethodService(), KeyboardRoot.Listener {
         super.onStartInputView(info, restarting)
         buffer.clear()
         // সেটিংসে উচ্চতা বদলালে কিবোর্ড নতুন করে বানাই
-        if (root != null && prefs.getInt("height_pct", 100) != appliedHeight) {
+        if (root != null && (prefs.getInt("height_pct", 100) != appliedHeight ||
+                prefs.getBoolean(KeyboardRoot.PREF_PREVIEW, false) != appliedPreview)
+        ) {
             setInputView(onCreateInputView())
         }
 
@@ -133,6 +137,7 @@ class BanglaKeyboardService : InputMethodService(), KeyboardRoot.Listener {
     /** কী-গুলোর গায়ে "এরপর এটা চাপলে কী আসবে" ইঙ্গিত */
     private fun updateHints() {
         val r = root ?: return
+        r.setTyped(if (bangla) buffer.toString() else "")
         if (!bangla || buffer.isEmpty()) r.setHints(null)
         else r.setHints(BanglaPhonetic.nextHints(buffer.toString()))
     }

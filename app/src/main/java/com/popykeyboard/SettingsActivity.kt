@@ -12,6 +12,8 @@ import android.view.inputmethod.InputMethodManager
 import android.widget.Button
 import android.widget.EditText
 import android.widget.LinearLayout
+import android.widget.RadioButton
+import android.widget.RadioGroup
 import android.widget.ScrollView
 import android.widget.SeekBar
 import android.widget.Switch
@@ -139,6 +141,18 @@ class SettingsActivity : Activity() {
         column.addView(seek)
         column.addView(body("পরের বার কিবোর্ড খুললে নতুন উচ্চতা কাজ করবে।"))
 
+        // ---- ইংরেজি অক্ষরের প্রিভিউ প্যানেল ----
+        column.addView(title("প্রিভিউ প্যানেল"))
+        column.addView(Switch(this).apply {
+            text = "নম্বর সারির ওপরে ইংরেজি অক্ষর দেখান"
+            isChecked = prefs.getBoolean(KeyboardRoot.PREF_PREVIEW, false)
+            setOnCheckedChangeListener { _, on -> prefs.edit().putBoolean(KeyboardRoot.PREF_PREVIEW, on).apply() }
+        })
+        column.addView(body(
+            "চালু করলে শব্দ লেখার সময় কী কী ইংরেজি অক্ষর চেপেছেন তা কিবোর্ডের ওপরে মাঝখানে ছোট ঘরে দেখায়। " +
+                "স্পেস দিলে ঘরটি খালি হয়ে নতুন শব্দের জন্য তৈরি থাকে। ডিফল্টে বন্ধ। পরের বার কিবোর্ড খুললে কাজ করবে।"
+        ))
+
         // ---- শব্দ ও ভাইব্রেশন ----
         column.addView(title("কী চাপার শব্দ"))
         addFeedbackControls(
@@ -149,6 +163,25 @@ class SettingsActivity : Activity() {
             note = "ফোন সাইলেন্ট বা ভাইব্রেট মোডে থাকলে শব্দ বাজে না। স্লাইডার ছাড়লে নমুনা শোনা যায়।",
             preview = { Feedback.previewSound(this) },
         )
+
+        column.addView(title("টাইপিং সাউন্ডের ধরন"))
+        val themeGroup = RadioGroup(this)
+        val currentTheme = Feedback.soundTheme(this)
+        for ((index, th) in Feedback.THEMES.withIndex()) {
+            val rb = RadioButton(this)
+            rb.id = 1000 + index
+            rb.text = th.label
+            rb.textSize = 16f
+            rb.isChecked = th.id == currentTheme
+            themeGroup.addView(rb)
+        }
+        themeGroup.setOnCheckedChangeListener { _, checkedId ->
+            val th = Feedback.THEMES.getOrNull(checkedId - 1000) ?: return@setOnCheckedChangeListener
+            prefs.edit().putString(Feedback.KEY_SOUND_THEME, th.id).apply()
+            Feedback.previewTheme(this)
+        }
+        column.addView(themeGroup)
+        column.addView(body("একটি বেছে নিলে নমুনা শোনা যায়। শব্দ বন্ধ থাকলে বা ফোন সাইলেন্টে থাকলে কিছু বাজবে না।"))
 
         column.addView(title("ভাইব্রেশন"))
         addFeedbackControls(
@@ -169,7 +202,7 @@ class SettingsActivity : Activity() {
                 "• b = শুধু স্বাধীন ব (যুক্ত হয় না);  w = ব্যঞ্জনের পর ব-ফলা, শুরুতে/স্বরের পর ও\n" +
                 "• লাল o = যুক্তাক্ষরে বাধা (ব্যঞ্জনের পর দেখা যায়, পরের অক্ষর এলে সরে যায়)\n" +
                 "• সবুজ q = ভাঙার চিহ্ন (একইভাবে মার্কার দেখায়); q সক্রিয় থাকলে যেসব কী-র ফল বদলায় তাদের ইঙ্গিত সবুজ\n" +
-                "• q + অক্ষর = স্বাধীন (ব্যঞ্জনের পরেও): qa = আ, qi = ই, qoo = ও, qz = য, qh = হ, qx = ক্স, q. = ?, q, = !\n" +
+                "• q + অক্ষর = স্বাধীন (ব্যঞ্জনের পরেও): qa = আ, qi = ই, qoo = ও, qz = য, qh = হ, qs = ষ, qr = ঋ/ৃ, qx = ক্স, q. = ?, q, = !\n" +
                 "• স্বরবর্ণে য-ফলা: oza = অ্যা (ভাঙতে q: oqzotha = অযথা)\n" +
                 "• শব্দ লেখার সময় কী-গুলোর গায়ে নীল ইঙ্গিত দেখায়: এরপর কোন কী চাপলে কী আসবে (কার, ফলা, খ/ঘ/ছ ইত্যাদিও)\n" +
                 "• র‍্য: শব্দের শুরুতে rz, অন্য জায়গায় rqz (রেফ-য হলে শুধু rz: কার্য = karz)"
@@ -189,10 +222,28 @@ class SettingsActivity : Activity() {
                 "bangla → বাংলা     utqtor → উত্তর     budqdhi → বুদ্ধি\n" +
                 "boqi → বই     hotthaqt → হঠাৎ     caqqd → চাঁদ\n" +
                 "dhorm → ধর্ম     durga → দুর্গা     bidza → বিদ্যা\n" +
-                "jnnnan → জ্ঞান     xoma → ক্ষমা     rrrsssi → ঋষি\n" +
+                "jnnnan → জ্ঞান     xoma → ক্ষমা     rrrsssi / qrsssi → ঋষি\n" +
                 "ghorri → ঘড়ি     duqwkh → দুঃখ     swopn → স্বপ্ন\n\n" +
                 "q = ভাঙার চিহ্ন;  ng = ং,  nnn / qn = ঞ,  nng = ঙ,  qt = ৎ (সব জায়গায়),  qq = ঁ,  qk = ৳,  qw = ঃ"
         ))
+
+        column.addView(title("ডেভেলপার"))
+        column.addView(body(
+            "আব্দুল্লাহ আল মামুন\n" +
+                "বিএ/এমএ (ইংরেজী)\n" +
+                "সরকারি তোলারাম কলেজ, নারায়ণগঞ্জ\n" +
+                "ইমেইল: mamun995599@gmail.com"
+        ).apply { setTextIsSelectable(true) })
+        column.addView(Button(this).apply {
+            text = "ইমেইল পাঠান"
+            setOnClickListener {
+                try {
+                    startActivity(Intent(Intent.ACTION_SENDTO, android.net.Uri.parse("mailto:mamun995599@gmail.com")))
+                } catch (e: Exception) {
+                    android.widget.Toast.makeText(this@SettingsActivity, "ইমেইল অ্যাপ পাওয়া যায়নি", android.widget.Toast.LENGTH_SHORT).show()
+                }
+            }
+        })
 
         setContentView(ScrollView(this).apply { addView(column) })
     }
